@@ -15,6 +15,9 @@
 
 namespace caspar::ograf {
 
+class manifest_registry;
+
 void init(const core::module_dependencies& dependencies);
+manifest_registry& registry();
 
 } // namespace caspar::ograf

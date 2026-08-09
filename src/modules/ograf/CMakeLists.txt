@@ -26,6 +26,8 @@ bin2c("spec/v1/json-schemas/gdd/playout-options.json" "ograf_schema_gdd_playout_
 set(MANIFEST_SOURCES
 	manifest/manifest.cpp
 	manifest/manifest.h
+	manifest/registry.cpp
+	manifest/registry.h
 	manifest/schema_validator.cpp
 	manifest/schema_validator.h
 

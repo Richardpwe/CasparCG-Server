@@ -1,5 +1,6 @@
 add_executable(ograf_manifest_tests
 	manifest_test.cpp
+	registry_test.cpp
 )
 
 target_compile_features(ograf_manifest_tests PRIVATE cxx_std_20)
