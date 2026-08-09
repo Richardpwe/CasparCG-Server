@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "l3rd-name",
+  "version": "1.0.0",
+  "name": "Lower 3rd - Name",
+  "description": "Name lower third",
+  "author": {
+    "name": "John Doe",
+    "email": "john.doe@foo.com"
+  },
+  "main": "lower-third.mjs",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "title": "Name",
+        "default": "John Doe"
+      }
+    }
+  },
+  "supportsRealTime": true,
+  "supportsNonRealTime": false
+}

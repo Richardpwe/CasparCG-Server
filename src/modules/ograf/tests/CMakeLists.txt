@@ -4,7 +4,10 @@ add_executable(ograf_manifest_tests
 )
 
 target_compile_features(ograf_manifest_tests PRIVATE cxx_std_20)
-target_compile_definitions(ograf_manifest_tests PRIVATE BOOST_JSON_NO_LIB)
+target_compile_definitions(ograf_manifest_tests PRIVATE
+	BOOST_JSON_NO_LIB
+	OGRAF_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+)
 target_include_directories(ograf_manifest_tests PRIVATE
 	${CMAKE_SOURCE_DIR}
 )

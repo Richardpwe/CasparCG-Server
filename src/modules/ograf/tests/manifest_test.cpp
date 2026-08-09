@@ -10,6 +10,8 @@
 
 namespace {
 
+const std::filesystem::path test_fixtures = OGRAF_TEST_FIXTURES;
+
 class manifest_fixture
 {
     static std::atomic_uint counter_;
@@ -129,6 +131,20 @@ BOOST_AUTO_TEST_CASE(load_official_minimal_manifest)
 
     BOOST_TEST(parsed.id == "minimal-example");
     BOOST_TEST(parsed.step_count == 1);
+}
+
+BOOST_AUTO_TEST_CASE(load_specification_example_fixtures)
+{
+    const auto minimal =
+        caspar::ograf::load_manifest(test_fixtures / "minimal" / "minimal.ograf.json");
+    const auto lower_third =
+        caspar::ograf::load_manifest(test_fixtures / "lower-third" / "lower-third.ograf.json");
+
+    BOOST_TEST(minimal.id == "minimal-example");
+    BOOST_TEST(minimal.main_path.filename().string() == "graphic.mjs");
+    BOOST_TEST(lower_third.id == "l3rd-name");
+    BOOST_TEST(lower_third.version == "1.0.0");
+    BOOST_TEST(lower_third.main_path.filename().string() == "lower-third.mjs");
 }
 
 BOOST_AUTO_TEST_CASE(reject_missing_required_property)

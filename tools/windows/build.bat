@@ -25,6 +25,10 @@ echo Building...
 msbuild "CasparCG Server.sln" /t:Clean /p:Configuration=Release || goto :error
 msbuild "CasparCG Server.sln" /p:Configuration=Release /m:%NUMBER_OF_PROCESSORS% || goto :error
 
+:: Run tests before packaging
+echo Testing...
+ctest --test-dir . -C Release --output-on-failure || goto :error
+
 :: Create server folder to later zip
 set SERVER_FOLDER=casparcg_server
 call ..\tools\windows\package.bat ..

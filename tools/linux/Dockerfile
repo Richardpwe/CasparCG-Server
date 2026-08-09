@@ -22,6 +22,7 @@ FROM docker.io/buildpack-deps:noble AS build-casparcg
 	RUN cmake -GNinja /source -DUSE_STATIC_BOOST=ON -DUSE_SYSTEM_CEF=OFF -DENABLE_VULKAN=ON
 
 	RUN cmake --build .
+	RUN ctest --output-on-failure
 
 	RUN cmake --install . --prefix staging
 
