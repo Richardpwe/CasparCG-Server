@@ -11,7 +11,7 @@ if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
 
-set(ENABLE_HTML ON CACHE BOOL "Enable CEF and HTML producer")
+set(ENABLE_WEB ON CACHE BOOL "Enable the shared CEF web renderer")
 set(USE_STATIC_BOOST OFF CACHE BOOL "Use shared library version of Boost")
 set(USE_SYSTEM_CEF ON CACHE BOOL "Use the version of cef from your OS (only tested with Ubuntu)")
 set(CASPARCG_BINARY_NAME "casparcg" CACHE STRING "Custom name of the binary to build (this disables some install files)")
@@ -63,7 +63,7 @@ endif()
 
 find_package(X11 REQUIRED)
 
-if (ENABLE_HTML)
+if (ENABLE_WEB)
     if (USE_SYSTEM_CEF)
         set(CEF_LIB_PATH "/usr/lib/casparcg-cef-142")
 

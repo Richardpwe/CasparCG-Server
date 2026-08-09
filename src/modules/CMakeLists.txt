@@ -9,6 +9,10 @@ add_subdirectory(screen)
 add_subdirectory(newtek)
 add_subdirectory(artnet)
 
+if (ENABLE_WEB)
+	add_subdirectory(web)
+endif ()
+
 if (ENABLE_HTML)
 	add_subdirectory(html)
 endif ()

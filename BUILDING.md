@@ -90,7 +90,12 @@ If all goes to plan, a folder called 'staging' has been created with everything 
 
 ## Build options
 
--DENABLE_HTML=OFF - useful if you lack CEF, and would like to build without that module.
+-DENABLE_WEB=OFF - useful if you lack CEF, and would like to build without web-based graphics.
+
+-DENABLE_HTML=OFF - disable classic HTML templates. For backwards compatibility, when this is the only web-related
+option supplied it also disables the shared web renderer.
+
+-DENABLE_OGRAF=OFF - disable native OGraf graphics.
 
 -DUSE_STATIC_BOOST=ON - (Linux only, default OFF) statically link against Boost.
 

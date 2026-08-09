@@ -235,7 +235,7 @@ set(LIBERATION_FONTS_BIN_PATH "${PROJECT_SOURCE_DIR}/shell/liberation-fonts")
 casparcg_add_runtime_dependency("${LIBERATION_FONTS_BIN_PATH}/LiberationMono-Regular.ttf")
 
 # CEF
-if (ENABLE_HTML)
+if (ENABLE_WEB)
 	casparcg_add_external_project(cef)
 	ExternalProject_Add(cef
 		URL ${CASPARCG_DOWNLOAD_MIRROR}/cef/cef_binary_142.0.17+g60aac24+chromium-142.0.7444.176_windows64_minimal.tar.bz2
