@@ -21,6 +21,8 @@
 
 #include "web_producer.h"
 
+#include "request_policy.h"
+
 #include <core/video_format.h>
 
 #include <core/frame/draw_frame.h>
@@ -48,6 +50,8 @@
 #include <include/cef_app.h>
 #include <include/cef_client.h>
 #include <include/cef_render_handler.h>
+#include <include/cef_request_handler.h>
+#include <include/cef_resource_request_handler.h>
 
 #include <queue>
 #include <utility>
@@ -108,6 +112,8 @@ class renderer_client
     , public CefLifeSpanHandler
     , public CefLoadHandler
     , public CefDisplayHandler
+    , public CefRequestHandler
+    , public CefResourceRequestHandler
 {
     std::wstring                        name_;
     std::wstring                        url_;
@@ -124,6 +130,7 @@ class renderer_client
     core::video_format_desc              format_desc_;
     bool                                 gpu_enabled_;
     bool                                 shared_texture_enable_;
+    bool                                 access_to_public_internet_;
     tbb::concurrent_queue<std::wstring>  javascript_before_load_;
     std::atomic<bool>                    loaded_;
     std::atomic<bool>                    not_found_;
@@ -155,7 +162,8 @@ class renderer_client
                     bool                                       shared_texture_enable,
                     std::wstring                               url,
                     std::wstring                               name,
-                    message_handler                            on_message)
+                    message_handler                            on_message,
+                    const bool                                 access_to_public_internet)
         : name_(std::move(name))
         , url_(std::move(url))
         , message_handler_(std::move(on_message))
@@ -164,6 +172,7 @@ class renderer_client
         , format_desc_(std::move(format_desc))
         , gpu_enabled_(gpu_enabled)
         , shared_texture_enable_(shared_texture_enable)
+        , access_to_public_internet_(access_to_public_internet)
 #ifdef WIN32
         , d3d_device_(accelerator::d3d::d3d_device::get_device())
 #endif
@@ -296,19 +305,19 @@ class renderer_client
         }
     }
 
-    bool OnBeforePopup(CefRefPtr<CefBrowser>          browser,
-                       CefRefPtr<CefFrame>            frame,
-                       int                            popup_id,
-                       const CefString&               target_url,
-                       const CefString&               target_frame_name,
-                       WindowOpenDisposition          target_disposition,
-                       bool                           user_gesture,
-                       const CefPopupFeatures&        popupFeatures,
-                       CefWindowInfo&                 windowInfo,
-                       CefRefPtr<CefClient>&          client,
-                       CefBrowserSettings&            settings,
-                       CefRefPtr<CefDictionaryValue>& dict,
-                       bool*                          no_javascript_access) override
+    bool OnBeforePopup(CefRefPtr<CefBrowser>                     browser,
+                       CefRefPtr<CefFrame>                       frame,
+                       int                                       popup_id,
+                       const CefString&                          target_url,
+                       const CefString&                          target_frame_name,
+                       CefLifeSpanHandler::WindowOpenDisposition target_disposition,
+                       bool                                      user_gesture,
+                       const CefPopupFeatures&                   popupFeatures,
+                       CefWindowInfo&                            windowInfo,
+                       CefRefPtr<CefClient>&                     client,
+                       CefBrowserSettings&                       settings,
+                       CefRefPtr<CefDictionaryValue>&            dict,
+                       bool*                                     no_javascript_access) override
     {
         // This blocks popup windows from opening, as they dont make sense and hit an exception in get_browser_host upon
         // closing
@@ -500,6 +509,32 @@ class renderer_client
 
     CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
 
+    CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
+
+    bool OnBeforeBrowse(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request, bool, bool) override
+    {
+        return !allow_request(request);
+    }
+
+    CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(CefRefPtr<CefBrowser>,
+                                                                   CefRefPtr<CefFrame>,
+                                                                   CefRefPtr<CefRequest>,
+                                                                   bool,
+                                                                   bool,
+                                                                   const CefString&,
+                                                                   bool&) override
+    {
+        return this;
+    }
+
+    ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser>,
+                                     CefRefPtr<CefFrame>,
+                                     CefRefPtr<CefRequest> request,
+                                     CefRefPtr<CefCallback>) override
+    {
+        return allow_request(request) ? RV_CONTINUE : RV_CANCEL;
+    }
+
     void OnLoadError(CefRefPtr<CefBrowser> browser,
                      CefRefPtr<CefFrame>   frame,
                      ErrorCode             errorCode,
@@ -611,6 +646,16 @@ class renderer_client
         audioResampler_ = nullptr;
     }
 
+    bool allow_request(const CefRefPtr<CefRequest>& request) const
+    {
+        const auto url = request->GetURL().ToString();
+        if (is_request_url_allowed(url, access_to_public_internet_)) {
+            return true;
+        }
+        CASPAR_LOG(warning) << print() << L" blocked external request: " << request->GetURL().ToWString();
+        return false;
+    }
+
     void do_execute_javascript(const std::wstring& javascript)
     {
         web::begin_invoke([this, javascript] {
@@ -651,7 +696,8 @@ class renderer_producer : public producer
                       const core::video_format_desc&              format_desc,
                       std::wstring                                url,
                       std::wstring                                name,
-                      message_handler                             on_message)
+                      message_handler                             on_message,
+                      const bool                                  access_to_public_internet)
         : format_desc_(format_desc)
         , url_(std::move(url))
         , name_(std::move(name))
@@ -659,8 +705,15 @@ class renderer_producer : public producer
         invoke([&] {
             auto gpu = is_gpu_shared_texture_enabled();
 
-            client_ = new renderer_client(
-                frame_factory, graph_, format_desc, gpu.first, gpu.second, url_, name_, std::move(on_message));
+            client_ = new renderer_client(frame_factory,
+                                          graph_,
+                                          format_desc,
+                                          gpu.first,
+                                          gpu.second,
+                                          url_,
+                                          name_,
+                                          std::move(on_message),
+                                          access_to_public_internet);
 
             CefWindowInfo window_info;
             window_info.bounds.width                 = format_desc.square_width;
@@ -751,13 +804,14 @@ class renderer_producer : public producer
 };
 
 spl::shared_ptr<producer> create_producer(const spl::shared_ptr<core::frame_factory>& frame_factory,
-                                         const core::video_format_desc&              format_desc,
-                                         std::wstring                                url,
-                                         std::wstring                                name,
-                                         message_handler                             on_message)
+                                          const core::video_format_desc&              format_desc,
+                                          std::wstring                                url,
+                                          std::wstring                                name,
+                                          message_handler                             on_message,
+                                          const bool                                  access_to_public_internet)
 {
     return spl::make_shared<renderer_producer>(
-        frame_factory, format_desc, std::move(url), std::move(name), std::move(on_message));
+        frame_factory, format_desc, std::move(url), std::move(name), std::move(on_message), access_to_public_internet);
 }
 
 } // namespace caspar::web

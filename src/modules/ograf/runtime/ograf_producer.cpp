@@ -206,7 +206,8 @@ ograf_producer::ograf_producer(const spl::shared_ptr<core::frame_factory>& frame
             if (const auto dispatcher = weak_dispatcher.lock()) {
                 dispatcher->handle_message(message);
             }
-        });
+        },
+        access_to_public_internet);
     web_ = std::shared_ptr<web::producer>(rendered);
 
     const auto action_timeout =

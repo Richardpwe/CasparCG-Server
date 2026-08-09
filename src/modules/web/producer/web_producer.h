@@ -29,9 +29,10 @@ class producer : public core::frame_producer
 };
 
 spl::shared_ptr<producer> create_producer(const spl::shared_ptr<core::frame_factory>& frame_factory,
-                                         const core::video_format_desc&              format_desc,
-                                         std::wstring                                url,
-                                         std::wstring                                name,
-                                         message_handler                             on_message = {});
+                                          const core::video_format_desc&              format_desc,
+                                          std::wstring                                url,
+                                          std::wstring                                name,
+                                          message_handler                             on_message                = {},
+                                          bool                                        access_to_public_internet = true);
 
 } // namespace caspar::web
