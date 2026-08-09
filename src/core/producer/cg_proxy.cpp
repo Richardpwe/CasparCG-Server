@@ -32,6 +32,7 @@
 #include <common/os/filesystem.h>
 #include <common/param.h>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>
 
 #include <future>
@@ -66,6 +67,7 @@ struct cg_producer_registry::impl
         cg_proxy_factory    proxy_factory;
         cg_producer_factory producer_factory;
         bool                reusable_producer_instance;
+        cg_template_resolver template_resolver;
     };
 
     mutable std::mutex             mutex_;
@@ -76,14 +78,16 @@ struct cg_producer_registry::impl
                               std::set<std::wstring> file_extensions,
                               cg_proxy_factory       proxy_factory,
                               cg_producer_factory    producer_factory,
-                              bool                   reusable_producer_instance)
+                              bool                   reusable_producer_instance,
+                              cg_template_resolver   template_resolver)
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
         record rec{std::move(cg_producer_name),
                    std::move(proxy_factory),
                    std::move(producer_factory),
-                   reusable_producer_instance};
+                   reusable_producer_instance,
+                   std::move(template_resolver)};
 
         for (auto& extension : file_extensions) {
             records_by_extension_.insert(std::make_pair(extension, rec));
@@ -180,6 +184,39 @@ struct cg_producer_registry::impl
 
         std::lock_guard<std::mutex> lock(mutex_);
 
+        const auto protocol = caspar::protocol_split(filename).first;
+        if (!protocol.empty()) {
+            for (const auto& [extension, rec] : records_by_extension_) {
+                if (boost::algorithm::iends_with(filename, extension)) {
+                    return rec;
+                }
+            }
+
+            // Preserve support for HTML URLs with query parameters.
+            for (const auto& [extension, rec] : records_by_extension_) {
+                if (extension == L".html") {
+                    return rec;
+                }
+            }
+            return {};
+        }
+
+        bool has_explicit_extension = false;
+        for (const auto& [extension, rec] : records_by_extension_) {
+            if (!boost::algorithm::iends_with(filename, extension)) {
+                continue;
+            }
+
+            has_explicit_extension = true;
+            if (find_case_insensitive(basepath.wstring()) ||
+                (rec.template_resolver && rec.template_resolver(filename))) {
+                return rec;
+            }
+        }
+        if (has_explicit_extension) {
+            return {};
+        }
+
         for (auto& rec : records_by_extension_) {
             auto p = path(basepath.wstring() + rec.first);
 
@@ -187,13 +224,9 @@ struct cg_producer_registry::impl
                 return rec.second;
         }
 
-        auto protocol = caspar::protocol_split(filename).first;
-        if (!protocol.empty()) {
-            auto ext = path(filename).extension().wstring();
-
-            for (auto& rec : records_by_extension_) {
-                if (rec.first == ext)
-                    return rec.second;
+        for (const auto& [extension, rec] : records_by_extension_) {
+            if (rec.template_resolver && rec.template_resolver(filename)) {
+                return rec;
             }
         }
 
@@ -216,13 +249,15 @@ void cg_producer_registry::register_cg_producer(std::wstring           cg_produc
                                                 std::set<std::wstring> file_extensions,
                                                 cg_proxy_factory       proxy_factory,
                                                 cg_producer_factory    producer_factory,
-                                                bool                   reusable_producer_instance)
+                                                bool                   reusable_producer_instance,
+                                                cg_template_resolver   template_resolver)
 {
     impl_->register_cg_producer(std::move(cg_producer_name),
                                 std::move(file_extensions),
                                 std::move(proxy_factory),
                                 std::move(producer_factory),
-                                reusable_producer_instance);
+                                reusable_producer_instance,
+                                std::move(template_resolver));
 }
 
 spl::shared_ptr<frame_producer> cg_producer_registry::create_producer(const frame_producer_dependencies& dependencies,

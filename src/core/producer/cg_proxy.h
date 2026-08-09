@@ -114,6 +114,7 @@ using cg_proxy_factory = std::function<spl::shared_ptr<cg_proxy>(const spl::shar
 using cg_producer_factory =
     std::function<spl::shared_ptr<frame_producer>(const frame_producer_dependencies& dependencies,
                                                   const std::wstring&                filename)>;
+using cg_template_resolver = std::function<bool(const std::wstring& filename)>;
 
 class cg_producer_registry
 {
@@ -124,7 +125,8 @@ class cg_producer_registry
                               std::set<std::wstring> file_extensions,
                               cg_proxy_factory       proxy_factory,
                               cg_producer_factory    producer_factory,
-                              bool                   reusable_producer_instance);
+                              bool                   reusable_producer_instance,
+                              cg_template_resolver   template_resolver = {});
 
     spl::shared_ptr<frame_producer> create_producer(const frame_producer_dependencies& dependencies,
                                                     const std::wstring&                filename) const;
