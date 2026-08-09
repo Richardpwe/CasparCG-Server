@@ -29,5 +29,6 @@ if (NODE_EXECUTABLE)
 		NAME ograf.host
 		COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/host_runtime_test.mjs
 			${CMAKE_CURRENT_SOURCE_DIR}/../host/ograf_host.html
+			${CMAKE_CURRENT_SOURCE_DIR}/fixtures
 	)
 endif ()

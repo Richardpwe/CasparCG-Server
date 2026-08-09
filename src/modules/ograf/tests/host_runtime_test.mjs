@@ -5,8 +5,9 @@ import {pathToFileURL} from "node:url";
 import path from "node:path";
 
 const hostPath = process.argv[2];
-if (!hostPath) {
-    throw new Error("Expected the OGraf host HTML path");
+const fixtureRoot = process.argv[3];
+if (!hostPath || !fixtureRoot) {
+    throw new Error("Expected the OGraf host HTML path and fixture root");
 }
 
 const html = await readFile(hostPath, "utf8");
@@ -28,11 +29,13 @@ const root = {
     appendChild(element) {
         this.children.push(element);
         element.parent = this;
+        element.connectedCallback?.();
     }
 };
 
 globalThis.__ografTestCalls = calls;
 globalThis.__ografTestDelay = delay => new Promise(resolve => setTimeout(resolve, delay));
+globalThis.__ografTestStress = false;
 globalThis.HTMLElement = class {
     constructor() {
         this.dataset = {};
@@ -80,17 +83,17 @@ const graphicModule = `
 export default class Graphic extends globalThis.HTMLElement {
     async load(params) {
         globalThis.__ografTestCalls.push(["load", this.dataset.graphicInstanceId, params]);
-        await globalThis.__ografTestDelay(10);
+        await globalThis.__ografTestDelay(globalThis.__ografTestStress ? 0 : 10);
         return {statusCode: 200, statusMessage: "loaded"};
     }
     async playAction(params) {
         globalThis.__ografTestCalls.push(["playAction", this.dataset.graphicInstanceId, params]);
-        await globalThis.__ografTestDelay(30);
+        await globalThis.__ografTestDelay(globalThis.__ografTestStress ? 0 : 30);
         return {statusCode: 200, currentStep: 2};
     }
     async updateAction(params) {
         globalThis.__ografTestCalls.push(["updateAction", this.dataset.graphicInstanceId, params]);
-        await globalThis.__ografTestDelay(5);
+        await globalThis.__ografTestDelay(globalThis.__ografTestStress ? 0 : 5);
         return {statusCode: 200};
     }
     async stopAction(params) {
@@ -191,6 +194,146 @@ try {
     await waitForResponseCount(8);
     assert.equal(root.children.length, 0);
     assert.equal(calls.filter(([operation]) => operation === "dispose").length, 2);
+
+    globalThis.__ografTestStress = true;
+    let expectedResponses = responses.length;
+    for (let cycle = 0; cycle < 100; ++cycle) {
+        const graphicInstanceId = `stress-${cycle}`;
+        window.__casparOgraphDispatch({
+            requestId: `stress-load-${cycle}`,
+            operation: "load",
+            graphicInstanceId,
+            moduleUrl,
+            params: {data: {cycle}}
+        });
+        await waitForResponseCount(++expectedResponses);
+
+        window.__casparOgraphDispatch({
+            requestId: `stress-play-${cycle}`,
+            operation: "playAction",
+            graphicInstanceId,
+            params: {delta: 1}
+        });
+        await waitForResponseCount(++expectedResponses);
+
+        window.__casparOgraphDispatch({
+            requestId: `stress-stop-${cycle}`,
+            operation: "stopAction",
+            graphicInstanceId,
+            params: {skipAnimation: true}
+        });
+        await waitForResponseCount(++expectedResponses);
+
+        window.__casparOgraphDispatch({
+            requestId: `stress-dispose-${cycle}`,
+            operation: "dispose",
+            graphicInstanceId,
+            params: {}
+        });
+        await waitForResponseCount(++expectedResponses);
+        assert.equal(root.children.length, 0);
+    }
+    assert.equal(responses.length, 408);
+    assert.ok(responses.every(response => response.ok));
+
+    const smokeFixtures = [
+        {
+            id: "minimal",
+            modulePath: path.join(fixtureRoot, "minimal", "graphic.mjs"),
+            data: {message: "Hello from CasparCG"},
+            expectedText: "Hello from CasparCG"
+        },
+        {
+            id: "lower-third",
+            modulePath: path.join(fixtureRoot, "lower-third", "lower-third.mjs"),
+            data: {name: "Ada Lovelace"},
+            expectedText: "Ada Lovelace",
+            expectedColor: "#ffffff"
+        }
+    ];
+    for (const fixture of smokeFixtures) {
+        const graphicInstanceId = `fixture-${fixture.id}`;
+        window.__casparOgraphDispatch({
+            requestId: `fixture-load-${fixture.id}`,
+            operation: "load",
+            graphicInstanceId,
+            moduleUrl: pathToFileURL(fixture.modulePath).href,
+            params: {data: fixture.data}
+        });
+        await waitForResponseCount(++expectedResponses);
+        assert.equal(root.children.length, 1);
+        assert.equal(root.children[0].textContent, fixture.expectedText);
+        if (fixture.expectedColor) {
+            assert.equal(root.children[0].style.color, fixture.expectedColor);
+            assert.equal(root.children[0].style.opacity, "0");
+        }
+
+        window.__casparOgraphDispatch({
+            requestId: `fixture-play-${fixture.id}`,
+            operation: "playAction",
+            graphicInstanceId,
+            params: {delta: 1}
+        });
+        await waitForResponseCount(++expectedResponses);
+        assert.equal(responses.at(-1).value.currentStep, 0);
+        if (fixture.expectedColor) {
+            assert.equal(root.children[0].style.opacity, "1");
+            assert.equal(root.children[0].style.transform, "translateY(0)");
+        }
+
+        if (fixture.id === "lower-third") {
+            window.__casparOgraphDispatch({
+                requestId: "fixture-play-lower-third-to-end",
+                operation: "playAction",
+                graphicInstanceId,
+                params: {delta: 1}
+            });
+            await waitForResponseCount(++expectedResponses);
+            assert.equal(responses.at(-1).value.currentStep, undefined);
+            assert.equal(root.children[0].style.opacity, "0");
+
+            window.__casparOgraphDispatch({
+                requestId: "fixture-replay-lower-third",
+                operation: "playAction",
+                graphicInstanceId,
+                params: {delta: 1}
+            });
+            await waitForResponseCount(++expectedResponses);
+            assert.equal(responses.at(-1).value.currentStep, 0);
+            assert.equal(root.children[0].style.opacity, "1");
+
+            window.__casparOgraphDispatch({
+                requestId: "fixture-stop-lower-third",
+                operation: "stopAction",
+                graphicInstanceId,
+                params: {}
+            });
+            await waitForResponseCount(++expectedResponses);
+            assert.equal(responses.at(-1).value.currentStep, undefined);
+            assert.equal(root.children[0].style.opacity, "0");
+
+            window.__casparOgraphDispatch({
+                requestId: "fixture-play-lower-third-after-stop",
+                operation: "playAction",
+                graphicInstanceId,
+                params: {delta: 1}
+            });
+            await waitForResponseCount(++expectedResponses);
+            assert.equal(responses.at(-1).value.currentStep, 0);
+            assert.equal(root.children[0].style.opacity, "1");
+        }
+
+        window.__casparOgraphDispatch({
+            requestId: `fixture-dispose-${fixture.id}`,
+            operation: "dispose",
+            graphicInstanceId,
+            params: {}
+        });
+        await waitForResponseCount(++expectedResponses);
+        assert.equal(root.children.length, 0);
+    }
+    assert.equal(responses.length, 418);
+    assert.ok(responses.every(response => response.ok));
 } finally {
     await Promise.all([
         rm(hostModulePath, {force: true}),
