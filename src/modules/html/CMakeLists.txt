@@ -9,16 +9,13 @@ set(SOURCES
 
 		html.cpp
 		html.h
-		util.h
 )
 
 casparcg_add_module_project(html
 	SOURCES ${SOURCES}
 	INIT_FUNCTION "html::init"
-	UNINIT_FUNCTION "html::uninit"
-	CLI_INTERCEPTOR "html::intercept_command_line"
 )
-target_link_libraries(html PRIVATE ffmpeg CEF::CEF)
+target_link_libraries(html PRIVATE ffmpeg web CEF::CEF)
 
 target_include_directories(html PRIVATE
     ..

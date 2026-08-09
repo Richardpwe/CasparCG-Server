@@ -10,6 +10,7 @@ casparcg_add_module_project(web
 	SOURCES ${SOURCES}
 	INIT_FUNCTION "web::init"
 	UNINIT_FUNCTION "web::uninit"
+	CLI_INTERCEPTOR "web::intercept_command_line"
 )
 target_link_libraries(web PRIVATE CEF::CEF)
 

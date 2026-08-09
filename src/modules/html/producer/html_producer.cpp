@@ -67,8 +67,7 @@
 
 #include <ffmpeg/util/audio_resampler.h>
 
-#include "../html.h"
-#include "../util.h"
+#include <web/web.h>
 
 #ifdef WIN32
 #include <accelerator/d3d/d3d_device.h>
@@ -197,7 +196,7 @@ class html_client
 
     void reload()
     {
-        html::begin_invoke([this] {
+        web::begin_invoke([this] {
             if (browser_ != nullptr)
                 browser_->Reload();
         });
@@ -207,7 +206,7 @@ class html_client
     {
         closing_ = true;
 
-        html::invoke([this] {
+        web::invoke([this] {
             if (browser_ != nullptr) {
                 browser_->GetHost()->CloseBrowser(true);
             }
@@ -546,7 +545,7 @@ class html_client
     {
         auto name = message->GetName().ToString();
 
-        if (name == REMOVE_MESSAGE_NAME) {
+        if (name == web::REMOVE_MESSAGE_NAME) {
             // TODO fully remove producer
             this->close();
 
@@ -562,7 +561,7 @@ class html_client
 
             return true;
         }
-        if (name == LOG_MESSAGE_NAME) {
+        if (name == web::LOG_MESSAGE_NAME) {
             auto args     = message->GetArgumentList();
             auto severity = static_cast<boost::log::trivial::severity_level>(args->GetInt(0));
             auto msg      = log::replace_nonprintable_copy(args->GetString(1).ToWString(), L'?');
@@ -610,7 +609,7 @@ class html_client
 
     void do_execute_javascript(const std::wstring& javascript)
     {
-        html::begin_invoke([this, javascript] {
+        web::begin_invoke([this, javascript] {
             if (browser_ != nullptr)
                 browser_->GetMainFrame()->ExecuteJavaScript(
                     u8(javascript).c_str(), browser_->GetMainFrame()->GetURL(), 0);
@@ -649,8 +648,8 @@ class html_producer : public core::frame_producer
         : format_desc_(format_desc)
         , url_(url)
     {
-        html::invoke([&] {
-            auto gpu = is_gpu_shared_texture_enabled();
+        web::invoke([&] {
+            auto gpu = web::is_gpu_shared_texture_enabled();
 
             client_ = new html_client(frame_factory, graph_, format_desc, gpu.first, gpu.second, url_);
 

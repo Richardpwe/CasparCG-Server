@@ -13,9 +13,23 @@
 
 #include <core/module_dependencies.h>
 
+#include <functional>
+#include <future>
+#include <string>
+#include <utility>
+
 namespace caspar::web {
 
+inline const std::string REMOVE_MESSAGE_NAME = "CasparCGRemove";
+inline const std::string LOG_MESSAGE_NAME    = "CasparCGLog";
+
+bool intercept_command_line(int argc, char** argv);
 void init(const core::module_dependencies& dependencies);
 void uninit();
+
+void              invoke(const std::function<void()>& func);
+std::future<void> begin_invoke(const std::function<void()>& func);
+
+std::pair<bool, bool> is_gpu_shared_texture_enabled();
 
 } // namespace caspar::web
