@@ -56,6 +56,9 @@ Getting Started
 Documentation
 -------------
 
+Native OGraf v1 setup, AMCP commands, and REST configuration are documented in
+[docs/OGRAF.md](docs/OGRAF.md).
+
 The most up-to-date documentation is always available at
 https://github.com/CasparCG/help/wiki
 
