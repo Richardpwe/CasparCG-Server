@@ -41,6 +41,8 @@ set(SOURCES
 	ograf_host.h
 	ograf.cpp
 	ograf.h
+	producer/ograf_cg_proxy.cpp
+	producer/ograf_cg_proxy.h
 	runtime/ograf_producer.cpp
 	runtime/ograf_producer.h
 )
@@ -58,6 +60,8 @@ target_compile_definitions(ograf_manifest PRIVATE BOOST_JSON_NO_LIB)
 
 casparcg_add_library(ograf_bridge
 	SOURCES
+		runtime/action_parameters.cpp
+		runtime/action_parameters.h
 		runtime/action_dispatcher.cpp
 		runtime/action_dispatcher.h
 		runtime/graphic_runtime.cpp
@@ -83,6 +87,7 @@ set_target_properties(ograf PROPERTIES FOLDER modules)
 set_target_properties(ograf_manifest PROPERTIES FOLDER modules)
 set_target_properties(ograf_bridge PROPERTIES FOLDER modules)
 source_group(sources\\manifest manifest/*)
+source_group(sources\\producer producer/*)
 source_group(sources\\runtime runtime/*)
 source_group(sources\\spec ${SCHEMA_HEADERS})
 source_group(sources ./*)
