@@ -123,7 +123,9 @@ struct cg_producer_registry::impl
     {
         auto producer = spl::make_shared_ptr(video_channel->stage()->foreground(render_layer).get());
 
-        return get_proxy(producer);
+        auto proxy = get_proxy(producer);
+        proxy->bind_render_target(video_channel->index(), render_layer);
+        return proxy;
     }
 
     spl::shared_ptr<cg_proxy> get_or_create_proxy(const spl::shared_ptr<video_channel>& video_channel,
@@ -155,7 +157,9 @@ struct cg_producer_registry::impl
             video_channel->stage()->play(render_layer);
         }
 
-        return found->proxy_factory(producer);
+        auto proxy = found->proxy_factory(producer);
+        proxy->bind_render_target(video_channel->index(), render_layer);
+        return proxy;
     }
 
     bool is_cg_extension(const std::wstring& extension) const

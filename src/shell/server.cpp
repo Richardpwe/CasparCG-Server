@@ -141,8 +141,16 @@ struct server::impl
         setup_amcp_command_repo();
         CASPAR_LOG(info) << L"Initialized command repository.";
 
-        module_dependencies dependencies(
-            cg_registry_, producer_registry_, consumer_registry_, amcp_command_repo_wrapper_);
+        std::vector<spl::shared_ptr<video_channel>> module_channels;
+        module_channels.reserve(channels_->size());
+        for (const auto& channel : *channels_) {
+            module_channels.emplace_back(channel.raw_channel);
+        }
+        module_dependencies dependencies(cg_registry_,
+                                         producer_registry_,
+                                         consumer_registry_,
+                                         amcp_command_repo_wrapper_,
+                                         std::move(module_channels));
         initialize_modules(dependencies);
         CASPAR_LOG(info) << L"Initialized modules.";
 

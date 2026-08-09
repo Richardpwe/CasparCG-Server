@@ -14,6 +14,7 @@
 #include "manifest/registry.h"
 #include "producer/ograf_cg_proxy.h"
 #include "runtime/ograf_producer.h"
+#include "service/graphics_service.h"
 
 #include <common/env.h>
 #include <common/utf.h>
@@ -27,6 +28,7 @@ namespace caspar::ograf {
 namespace {
 
 std::unique_ptr<manifest_registry> registry_;
+std::unique_ptr<graphics_service>  graphics_;
 
 } // namespace
 
@@ -34,6 +36,7 @@ void init(const core::module_dependencies& dependencies)
 {
     registry_ = std::make_unique<manifest_registry>(std::filesystem::path(env::template_folder()));
     registry_->refresh();
+    graphics_ = std::make_unique<graphics_service>(dependencies.channels, *registry_);
 
     for (const auto& error : registry_->errors()) {
         CASPAR_LOG(warning) << L"[ograf] Ignoring manifest " << error.path.wstring() << L": " << u16(error.message);
@@ -43,7 +46,7 @@ void init(const core::module_dependencies& dependencies)
         L"ograf",
         {L".ograf.json"},
         [](const spl::shared_ptr<core::frame_producer>& producer) {
-            return spl::make_shared<ograf_cg_proxy>(producer, registry());
+            return spl::make_shared<ograf_cg_proxy>(producer, registry(), graphics());
         },
         [](const core::frame_producer_dependencies& dependencies, const std::wstring&) {
             return create_ograf_producer(dependencies.frame_factory, dependencies.format_desc);
@@ -52,6 +55,13 @@ void init(const core::module_dependencies& dependencies)
         [](const std::wstring& filename) { return registry().find(u8(filename)) != nullptr; });
 }
 
+void uninit()
+{
+    graphics_.reset();
+    registry_.reset();
+}
+
 manifest_registry& registry() { return *registry_; }
+graphics_service&  graphics() { return *graphics_; }
 
 } // namespace caspar::ograf

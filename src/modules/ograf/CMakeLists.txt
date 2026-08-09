@@ -45,6 +45,8 @@ set(SOURCES
 	producer/ograf_cg_proxy.h
 	runtime/ograf_producer.cpp
 	runtime/ograf_producer.h
+	service/graphics_service.cpp
+	service/graphics_service.h
 )
 
 bin2c("host/ograf_host.html" "ograf_host.h" "caspar::ograf::host" "document")
@@ -76,6 +78,7 @@ target_link_libraries(ograf_bridge PRIVATE ograf_manifest)
 casparcg_add_module_project(ograf
 	SOURCES ${SOURCES}
 	INIT_FUNCTION "ograf::init"
+	UNINIT_FUNCTION "ograf::uninit"
 )
 target_include_directories(ograf PRIVATE
 	${CMAKE_CURRENT_BINARY_DIR}
@@ -89,6 +92,7 @@ set_target_properties(ograf_bridge PROPERTIES FOLDER modules)
 source_group(sources\\manifest manifest/*)
 source_group(sources\\producer producer/*)
 source_group(sources\\runtime runtime/*)
+source_group(sources\\service service/*)
 source_group(sources\\spec ${SCHEMA_HEADERS})
 source_group(sources ./*)
 

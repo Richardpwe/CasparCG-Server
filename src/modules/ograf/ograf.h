@@ -16,8 +16,11 @@
 namespace caspar::ograf {
 
 class manifest_registry;
+class graphics_service;
 
-void init(const core::module_dependencies& dependencies);
+void               init(const core::module_dependencies& dependencies);
+void               uninit();
 manifest_registry& registry();
+graphics_service&  graphics();
 
 } // namespace caspar::ograf

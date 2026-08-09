@@ -57,6 +57,7 @@ class cg_proxy
     virtual std::wstring invoke(int layer, const std::wstring& label) = 0;
 
     virtual bool uses_json_data() const { return false; }
+    virtual void bind_render_target(int, int) {}
 
     virtual cg_command_result add_action(int                 layer,
                                          const std::wstring& template_name,

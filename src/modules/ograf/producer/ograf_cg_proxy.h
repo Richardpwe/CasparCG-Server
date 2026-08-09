@@ -18,11 +18,14 @@
 namespace caspar::ograf {
 
 class manifest_registry;
+class graphics_service;
 
 class ograf_cg_proxy final : public core::cg_proxy
 {
   public:
-    ograf_cg_proxy(const spl::shared_ptr<core::frame_producer>& producer, manifest_registry& registry);
+    ograf_cg_proxy(const spl::shared_ptr<core::frame_producer>& producer,
+                   manifest_registry&                           registry,
+                   graphics_service&                            service);
 
     void         add(int                 layer,
                      const std::wstring& template_name,
@@ -37,6 +40,7 @@ class ograf_cg_proxy final : public core::cg_proxy
     std::wstring invoke(int layer, const std::wstring& label) override;
 
     bool uses_json_data() const override;
+    void bind_render_target(int channel, int layer) override;
 
     core::cg_command_result add_action(int                 layer,
                                        const std::wstring& template_name,
@@ -55,6 +59,7 @@ class ograf_cg_proxy final : public core::cg_proxy
 
     spl::shared_ptr<ograf_producer> producer_;
     manifest_registry&              registry_;
+    graphics_service&               service_;
 };
 
 } // namespace caspar::ograf

@@ -27,6 +27,9 @@
 #include "producer/cg_proxy.h"
 #include "producer/frame_producer_registry.h"
 
+#include <utility>
+#include <vector>
+
 namespace caspar::protocol::amcp {
 class amcp_command_repository_wrapper;
 }
@@ -39,15 +42,18 @@ struct module_dependencies
     const spl::shared_ptr<frame_producer_registry>                         producer_registry;
     const spl::shared_ptr<frame_consumer_registry>                         consumer_registry;
     const std::shared_ptr<protocol::amcp::amcp_command_repository_wrapper> command_repository;
+    const std::vector<spl::shared_ptr<video_channel>>                      channels;
 
     module_dependencies(const spl::shared_ptr<cg_producer_registry>&                            cg_registry,
                         const spl::shared_ptr<frame_producer_registry>&                         producer_registry,
                         const spl::shared_ptr<frame_consumer_registry>&                         consumer_registry,
-                        const std::shared_ptr<protocol::amcp::amcp_command_repository_wrapper>& command_repository)
+                        const std::shared_ptr<protocol::amcp::amcp_command_repository_wrapper>& command_repository,
+                        std::vector<spl::shared_ptr<video_channel>>                             channels)
         : cg_registry(cg_registry)
         , producer_registry(producer_registry)
         , consumer_registry(consumer_registry)
         , command_repository(command_repository)
+        , channels(std::move(channels))
     {
     }
 };

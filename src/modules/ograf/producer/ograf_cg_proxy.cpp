@@ -13,6 +13,7 @@
 
 #include <modules/ograf/manifest/registry.h>
 #include <modules/ograf/runtime/action_parameters.h>
+#include <modules/ograf/service/graphics_service.h>
 
 #include <common/utf.h>
 
@@ -31,9 +32,12 @@ core::cg_command_result command_result(const action_result& result)
 
 } // namespace
 
-ograf_cg_proxy::ograf_cg_proxy(const spl::shared_ptr<core::frame_producer>& producer, manifest_registry& registry)
+ograf_cg_proxy::ograf_cg_proxy(const spl::shared_ptr<core::frame_producer>& producer,
+                               manifest_registry&                           registry,
+                               graphics_service&                            service)
     : producer_(spl::dynamic_pointer_cast<ograf_producer>(producer))
     , registry_(registry)
+    , service_(service)
 {
 }
 
@@ -62,6 +66,11 @@ std::wstring ograf_cg_proxy::invoke(const int layer, const std::wstring& label)
 }
 
 bool ograf_cg_proxy::uses_json_data() const { return true; }
+
+void ograf_cg_proxy::bind_render_target(const int channel, const int layer)
+{
+    service_.register_target({channel, layer}, producer_);
+}
 
 core::cg_command_result ograf_cg_proxy::add_action(const int           layer,
                                                    const std::wstring& template_name,
