@@ -17,6 +17,10 @@ if (ENABLE_HTML)
 	add_subdirectory(html)
 endif ()
 
+if (ENABLE_OGRAF)
+	add_subdirectory(ograf)
+endif ()
+
 if (MSVC)
 	add_subdirectory(flash)
 	add_subdirectory(bluefish)
