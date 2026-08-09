@@ -109,6 +109,38 @@ BOOST_AUTO_TEST_CASE(ignore_tombstone_files)
     BOOST_TEST(registry.errors().empty());
 }
 
+BOOST_AUTO_TEST_CASE(tombstone_manifest_is_unlisted_until_last_instance_is_removed)
+{
+    registry_fixture fixture;
+    fixture.add_graphic("graphic", "graphic.ograf.json", "com.example.deleted");
+
+    caspar::ograf::manifest_registry registry(fixture.root);
+    const auto                       pending = registry.tombstone_manifest("com.example.deleted");
+
+    BOOST_REQUIRE(pending.has_value());
+    BOOST_TEST(std::filesystem::exists(pending->path));
+    BOOST_TEST(registry.find("com.example.deleted") == nullptr);
+
+    registry.remove_unused_tombstones({"com.example.deleted"});
+    BOOST_TEST(std::filesystem::exists(pending->path));
+
+    registry.remove_unused_tombstones({});
+    BOOST_TEST(!std::filesystem::exists(pending->path));
+}
+
+BOOST_AUTO_TEST_CASE(cleanup_orphaned_tombstones_on_start)
+{
+    registry_fixture fixture;
+    fixture.add_graphic("graphic", "graphic.ograf.json", "com.example.orphaned");
+    const auto manifest  = fixture.root / "graphic" / "graphic.ograf.json";
+    const auto tombstone = fixture.root / "graphic" / "graphic.ograf.json.casparcg-ograf-tombstone-orphan";
+    std::filesystem::rename(manifest, tombstone);
+
+    caspar::ograf::manifest_registry registry(fixture.root);
+    BOOST_TEST(registry.cleanup_orphaned_tombstones().empty());
+    BOOST_TEST(!std::filesystem::exists(tombstone));
+}
+
 BOOST_AUTO_TEST_CASE(prefer_html_for_extensionless_conflict)
 {
     registry_fixture fixture;

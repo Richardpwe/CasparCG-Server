@@ -1,6 +1,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <modules/ograf/manifest/registry.h>
+#include <modules/ograf/manifest/schema_validator.h>
 #include <modules/ograf/service/graphics_service.h>
 
 #include <protocol/ograf/http_server.h>
@@ -38,6 +39,7 @@ class empty_graphics_service final : public caspar::ograf::graphics_service_inte
 {
   public:
     bool                                         clear_called = false;
+    std::vector<caspar::ograf::located_instance> located;
     std::string                                  last_operation;
     caspar::ograf::render_target                 last_target;
     std::string                                  last_id;
@@ -91,14 +93,14 @@ class empty_graphics_service final : public caspar::ograf::graphics_service_inte
     std::vector<caspar::ograf::located_instance> clear(const std::vector<caspar::ograf::graphic_filter>&) override
     {
         clear_called = true;
-        return {};
+        return std::exchange(located, {});
     }
 
     std::vector<caspar::ograf::render_target> targets() override { return {}; }
 
     std::vector<caspar::ograf::graphic_instance> instances(caspar::ograf::render_target) override { return {}; }
 
-    std::vector<caspar::ograf::located_instance> all_instances() override { return {}; }
+    std::vector<caspar::ograf::located_instance> all_instances() override { return located; }
 
     boost::json::object render_characteristics(caspar::ograf::render_target) const override { return {}; }
 
@@ -131,7 +133,23 @@ std::filesystem::path api_test_root()
     return root;
 }
 
-std::set<std::pair<std::string, std::string>> openapi_control_operations()
+void add_api_graphic(const std::filesystem::path& root, const std::string& id)
+{
+    std::ofstream(root / "graphic.mjs") << "export default class Graphic extends HTMLElement {}";
+    std::ofstream(root / "graphic.ograf.json")
+        << R"({"$schema":")" << caspar::ograf::GRAPHICS_SCHEMA_V1 << R"(",)"
+        << R"("id":")" << id << R"(",)"
+        << R"("name":"API test","main":"graphic.mjs","supportsRealTime":true,"supportsNonRealTime":false})";
+}
+
+bool has_tombstone(const std::filesystem::path& root)
+{
+    return std::ranges::any_of(std::filesystem::recursive_directory_iterator(root), [](const auto& entry) {
+        return entry.path().filename().string().find(".casparcg-ograf-tombstone-") != std::string::npos;
+    });
+}
+
+std::set<std::pair<std::string, std::string>> openapi_operations()
 {
     std::ifstream stream(OGRAF_OPENAPI_SNAPSHOT);
     if (!stream) {
@@ -152,9 +170,7 @@ std::set<std::pair<std::string, std::string>> openapi_control_operations()
             std::ranges::transform(method, method.begin(), [](const unsigned char character) {
                 return static_cast<char>(std::toupper(character));
             });
-            if (method != "DELETE") {
-                result.emplace(current_path, std::move(method));
-            }
+            result.emplace(current_path, std::move(method));
         }
     }
     return result;
@@ -215,12 +231,59 @@ BOOST_AUTO_TEST_CASE(api_router_returns_rfc7807_errors)
     std::filesystem::remove_all(root);
 }
 
-BOOST_AUTO_TEST_CASE(api_routes_cover_pinned_openapi_control_contract)
+BOOST_AUTO_TEST_CASE(api_delete_defers_tombstone_while_graphic_is_in_use)
+{
+    const auto root = api_test_root();
+    add_api_graphic(root, "com.example.delete");
+
+    caspar::ograf::manifest_registry registry(root);
+    const auto                       graphic = registry.find("com.example.delete");
+    BOOST_REQUIRE(graphic != nullptr);
+
+    empty_graphics_service service;
+    service.located.push_back({{1, 20}, {"instance-1", graphic, std::nullopt, std::nullopt}});
+    caspar::protocol::ograf::router router(registry, service, "/ograf/v1");
+
+    const auto response = router.route({"DELETE", "/ograf/v1/graphics/com.example.delete", ""});
+    BOOST_TEST(response.status == 200);
+    BOOST_TEST(!service.clear_called);
+    BOOST_TEST(registry.find("com.example.delete") == nullptr);
+    BOOST_TEST(has_tombstone(root));
+
+    service.located.clear();
+    registry.remove_unused_tombstones({});
+    BOOST_TEST(!has_tombstone(root));
+    std::filesystem::remove_all(root);
+}
+
+BOOST_AUTO_TEST_CASE(api_force_delete_clears_instances_before_removing_tombstone)
+{
+    const auto root = api_test_root();
+    add_api_graphic(root, "com.example.force-delete");
+
+    caspar::ograf::manifest_registry registry(root);
+    const auto                       graphic = registry.find("com.example.force-delete");
+    BOOST_REQUIRE(graphic != nullptr);
+
+    empty_graphics_service service;
+    service.located.push_back({{1, 20}, {"instance-1", graphic, std::nullopt, std::nullopt}});
+    caspar::protocol::ograf::router router(registry, service, "/ograf/v1");
+
+    const auto response = router.route({"DELETE", "/ograf/v1/graphics/com.example.force-delete?force=true", ""});
+    BOOST_TEST(response.status == 200);
+    BOOST_TEST(service.clear_called);
+    BOOST_TEST(service.located.empty());
+    BOOST_TEST(!has_tombstone(root));
+    std::filesystem::remove_all(root);
+}
+
+BOOST_AUTO_TEST_CASE(api_routes_cover_pinned_openapi_snapshot)
 {
     const std::set<std::pair<std::string, std::string>> expected{
         {"/", "GET"},
         {"/graphics", "GET"},
         {"/graphics/{graphicId}", "GET"},
+        {"/graphics/{graphicId}", "DELETE"},
         {"/renderers", "GET"},
         {"/renderers/{rendererId}", "GET"},
         {"/renderers/{rendererId}/target", "GET"},
@@ -232,7 +295,7 @@ BOOST_AUTO_TEST_CASE(api_routes_cover_pinned_openapi_control_contract)
         {"/renderers/{rendererId}/target/graphicInstance/stopAction", "POST"},
         {"/renderers/{rendererId}/target/graphicInstance/customActions/{customActionId}", "POST"},
     };
-    BOOST_TEST(openapi_control_operations() == expected);
+    BOOST_TEST(openapi_operations() == expected);
 }
 
 BOOST_AUTO_TEST_CASE(api_control_routes_map_openapi_requests_to_graphics_service)
