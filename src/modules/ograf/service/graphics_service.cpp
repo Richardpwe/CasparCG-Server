@@ -210,6 +210,16 @@ std::shared_ptr<ograf_producer> graphics_service::producer(const render_target t
         return {};
     }
 
+    std::lock_guard creation_lock(producer_creation_mutex_);
+
+    current_base = target_channel->stage()->foreground(target.layer).get();
+    current      = std::dynamic_pointer_cast<ograf_producer>(current_base);
+    if (current) {
+        std::lock_guard lock(mutex_);
+        producers_[target] = current;
+        return current;
+    }
+
     auto created_spl =
         create_ograf_producer(target_channel->frame_factory(), target_channel->stage()->video_format_desc());
     current = std::shared_ptr<ograf_producer>(created_spl);

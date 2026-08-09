@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace caspar::protocol::ograf {
 
@@ -39,6 +40,7 @@ using tcp       = asio::ip::tcp;
 namespace {
 
 constexpr std::uint64_t max_request_body_bytes = 4U * 1024U * 1024U;
+constexpr std::size_t   http_worker_count       = 4;
 
 class http_session final : public std::enable_shared_from_this<http_session>
 {
@@ -155,7 +157,10 @@ class http_server::impl
 
         port_ = acceptor_.local_endpoint().port();
         accept();
-        worker_ = std::thread([this] { context_.run(); });
+        workers_.reserve(http_worker_count);
+        for (std::size_t index = 0; index < http_worker_count; ++index) {
+            workers_.emplace_back([this] { context_.run(); });
+        }
     }
 
     ~impl()
@@ -166,8 +171,10 @@ class http_server::impl
             acceptor_.close(ignored);
         });
         context_.stop();
-        if (worker_.joinable()) {
-            worker_.join();
+        for (auto& worker : workers_) {
+            if (worker.joinable()) {
+                worker.join();
+            }
         }
     }
 
@@ -195,12 +202,12 @@ class http_server::impl
         });
     }
 
-    router&           router_;
-    asio::io_context  context_{1};
-    asio::ip::address address_;
-    tcp::acceptor     acceptor_;
-    std::thread       worker_;
-    std::uint16_t     port_{};
+    router&                  router_;
+    asio::io_context         context_{static_cast<int>(http_worker_count)};
+    asio::ip::address        address_;
+    tcp::acceptor            acceptor_;
+    std::vector<std::thread> workers_;
+    std::uint16_t            port_{};
 };
 
 http_server::http_server(router& request_router, http_server_config config)

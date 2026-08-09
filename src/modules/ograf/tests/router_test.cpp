@@ -18,7 +18,11 @@
 #include <boost/json/parse.hpp>
 
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
+#include <functional>
+#include <future>
+#include <mutex>
 #include <string>
 
 namespace {
@@ -26,6 +30,8 @@ namespace {
 class empty_graphics_service final : public caspar::ograf::graphics_service_interface
 {
   public:
+    std::function<caspar::ograf::action_result()> play_override;
+
     caspar::ograf::action_result
     load(caspar::ograf::render_target, const std::string&, boost::json::value, std::optional<int>, bool) override
     {
@@ -34,6 +40,9 @@ class empty_graphics_service final : public caspar::ograf::graphics_service_inte
 
     caspar::ograf::action_result play(caspar::ograf::render_target, const std::string&, boost::json::object) override
     {
+        if (play_override) {
+            return play_override();
+        }
         return {};
     }
 
@@ -206,5 +215,64 @@ BOOST_AUTO_TEST_CASE(api_http_server_rejects_oversized_bodies_with_problem_respo
 
     boost::system::error_code ignored;
     stream.socket().shutdown(tcp::socket::shutdown_both, ignored);
+    std::filesystem::remove_all(root);
+}
+
+BOOST_AUTO_TEST_CASE(api_http_server_serves_independent_actions_concurrently)
+{
+    namespace asio  = boost::asio;
+    namespace beast = boost::beast;
+    namespace http  = beast::http;
+
+    const auto                           root = api_test_root();
+    caspar::ograf::manifest_registry     registry(root);
+    empty_graphics_service               service;
+    caspar::protocol::ograf::router      router(registry, service, "/ograf/v1", "test-version");
+    caspar::protocol::ograf::http_server server(router, caspar::protocol::ograf::http_server_config{"127.0.0.1", 0});
+
+    std::mutex              mutex;
+    std::condition_variable entered;
+    int                     active     = 0;
+    bool                    concurrent = false;
+    service.play_override = [&] {
+        std::unique_lock lock(mutex);
+        ++active;
+        if (active == 2) {
+            concurrent = true;
+            entered.notify_all();
+        }
+        entered.wait_for(lock, std::chrono::seconds(2), [&] { return concurrent; });
+        --active;
+        return caspar::ograf::action_result{200, "OK", {}, 0, "instance-1"};
+    };
+
+    const auto send_play = [port = server.port()] {
+        asio::io_context  context;
+        beast::tcp_stream stream(context);
+        stream.connect({asio::ip::make_address("127.0.0.1"), port});
+
+        http::request<http::string_body> request{
+            http::verb::post,
+            "/ograf/v1/renderers/casparcg/target/graphicInstance/playAction",
+            11};
+        request.set(http::field::host, "127.0.0.1");
+        request.set(http::field::content_type, "application/json");
+        request.body() = R"({"renderTarget":{"channel":1,"layer":20},"graphicInstanceId":"instance-1","params":{"delta":1}})";
+        request.prepare_payload();
+        http::write(stream, request);
+
+        beast::flat_buffer                buffer;
+        http::response<http::string_body> response;
+        http::read(stream, buffer, response);
+        return response.result_int();
+    };
+
+    auto first  = std::async(std::launch::async, send_play);
+    auto second = std::async(std::launch::async, send_play);
+
+    BOOST_TEST(first.get() == 200);
+    BOOST_TEST(second.get() == 200);
+    BOOST_TEST(concurrent);
+
     std::filesystem::remove_all(root);
 }

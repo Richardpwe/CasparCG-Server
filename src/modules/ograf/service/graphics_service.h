@@ -117,6 +117,7 @@ class graphics_service final : public graphics_service_interface
     std::vector<spl::shared_ptr<core::video_channel>> channels_;
     manifest_registry&                                registry_;
 
+    mutable std::mutex                                     producer_creation_mutex_;
     mutable std::mutex                                     mutex_;
     std::map<render_target, std::weak_ptr<ograf_producer>> producers_;
 };
