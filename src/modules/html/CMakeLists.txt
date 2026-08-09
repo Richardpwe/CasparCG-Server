@@ -15,11 +15,10 @@ casparcg_add_module_project(html
 	SOURCES ${SOURCES}
 	INIT_FUNCTION "html::init"
 )
-target_link_libraries(html PRIVATE ffmpeg web CEF::CEF)
+target_link_libraries(html PRIVATE web)
 
 target_include_directories(html PRIVATE
-    ..
-	${FFMPEG_INCLUDE_PATH}
+	..
 )
 
 set_target_properties(html PROPERTIES FOLDER modules)
