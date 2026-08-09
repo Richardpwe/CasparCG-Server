@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <style>
+        html, body, #ograf-root {
+            background: transparent;
+            border: 0;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            padding: 0;
+            width: 100%;
+        }
+
+        #ograf-root > * {
+            display: block;
+            inset: 0;
+            position: absolute;
+        }
+    </style>
+</head>
+<body>
+<div id="ograf-root"></div>
+<script type="module">
+    const root = document.getElementById("ograf-root");
+    const instances = new Map();
+    const modules = new Map();
+    let nextElementName = 1;
+
+    function send(message) {
+        if (!window.casparNative || typeof window.casparNative.postMessage !== "function") {
+            throw new Error("CasparCG native bridge is unavailable");
+        }
+        window.casparNative.postMessage(JSON.stringify(message));
+    }
+
+    function responseValue(value) {
+        if (value === undefined) {
+            return { statusCode: 200 };
+        }
+        if (value === null || typeof value !== "object" || Array.isArray(value)) {
+            throw new TypeError("OGraf method must resolve to undefined or a ReturnPayload object");
+        }
+        if (typeof value.statusCode !== "number") {
+            throw new TypeError("OGraf ReturnPayload.statusCode must be a number");
+        }
+        return value;
+    }
+
+    async function elementNameFor(moduleUrl) {
+        const cached = modules.get(moduleUrl);
+        if (cached) {
+            return cached;
+        }
+
+        const loading = Promise.resolve().then(async () => {
+            const imported = await import(moduleUrl);
+            if (typeof imported.default !== "function") {
+                const names = Object.keys(imported);
+                throw new TypeError(
+                    names.length
+                        ? `OGraf module must use a class as default export; found: ${names.join(", ")}`
+                        : "OGraf module must use a class as default export"
+                );
+            }
+
+            const elementName = `caspar-ograf-${nextElementName++}`;
+            customElements.define(elementName, imported.default);
+            return elementName;
+        });
+        modules.set(moduleUrl, loading);
+        try {
+            return await loading;
+        } catch (error) {
+            if (modules.get(moduleUrl) === loading) {
+                modules.delete(moduleUrl);
+            }
+            throw error;
+        }
+    }
+
+    function instanceFor(graphicInstanceId) {
+        const instance = instances.get(graphicInstanceId);
+        if (!instance) {
+            throw new Error(`Unknown GraphicInstance ${graphicInstanceId}`);
+        }
+        return instance;
+    }
+
+    async function load(request) {
+        if (instances.has(request.graphicInstanceId)) {
+            throw new Error(`GraphicInstance ${request.graphicInstanceId} already exists`);
+        }
+
+        const elementName = await elementNameFor(request.moduleUrl);
+        const element = document.createElement(elementName);
+        element.dataset.graphicInstanceId = request.graphicInstanceId;
+        if (Number.isInteger(request.cgLayer)) {
+            element.style.zIndex = String(request.cgLayer);
+        }
+        root.appendChild(element);
+
+        const instance = {
+            element,
+            loaded: Promise.resolve().then(() => element.load(request.params))
+        };
+        instances.set(request.graphicInstanceId, instance);
+
+        try {
+            return responseValue(await instance.loaded);
+        } catch (error) {
+            element.remove();
+            instances.delete(request.graphicInstanceId);
+            throw error;
+        }
+    }
+
+    async function invoke(request) {
+        const instance = instanceFor(request.graphicInstanceId);
+        await instance.loaded;
+        const method = instance.element[request.operation];
+        if (typeof method !== "function") {
+            throw new TypeError(`Graphic does not implement ${request.operation}()`);
+        }
+        return responseValue(await method.call(instance.element, request.params || {}));
+    }
+
+    async function dispose(request) {
+        const instance = instanceFor(request.graphicInstanceId);
+        try {
+            await instance.loaded;
+            const method = instance.element.dispose;
+            if (typeof method !== "function") {
+                throw new TypeError("Graphic does not implement dispose()");
+            }
+            return responseValue(await method.call(instance.element, request.params || {}));
+        } finally {
+            instance.element.remove();
+            instances.delete(request.graphicInstanceId);
+        }
+    }
+
+    function discard(request) {
+        const instance = instances.get(request.graphicInstanceId);
+        if (instance) {
+            instance.element.remove();
+            instances.delete(request.graphicInstanceId);
+        }
+        return { statusCode: 200 };
+    }
+
+    async function dispatch(request) {
+        switch (request.operation) {
+            case "load":
+                return load(request);
+            case "playAction":
+            case "updateAction":
+            case "stopAction":
+            case "customAction":
+                return invoke(request);
+            case "dispose":
+                return dispose(request);
+            case "discard":
+                return discard(request);
+            default:
+                throw new Error(`Unsupported OGraf operation ${request.operation}`);
+        }
+    }
+
+    window.__casparOgraphDispatch = function (request) {
+        Promise.resolve()
+            .then(() => dispatch(request))
+            .then(
+                value => send({ requestId: request.requestId, ok: true, value }),
+                error => send({
+                    requestId: request.requestId,
+                    ok: false,
+                    error: {
+                        message: error instanceof Error ? error.message : String(error),
+                        stack: error instanceof Error ? error.stack : undefined
+                    }
+                })
+            );
+    };
+
+    send({ type: "ready" });
+</script>
+</body>
+</html>

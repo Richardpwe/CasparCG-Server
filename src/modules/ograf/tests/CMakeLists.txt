@@ -1,6 +1,7 @@
 add_executable(ograf_manifest_tests
 	manifest_test.cpp
 	registry_test.cpp
+	action_dispatcher_test.cpp
 )
 
 target_compile_features(ograf_manifest_tests PRIVATE cxx_std_20)
@@ -14,8 +15,17 @@ target_include_directories(ograf_manifest_tests PRIVATE
 target_include_directories(ograf_manifest_tests SYSTEM PRIVATE
 	${BOOST_INCLUDE_PATH}
 )
-target_link_libraries(ograf_manifest_tests PRIVATE ograf_manifest)
+target_link_libraries(ograf_manifest_tests PRIVATE ograf_bridge ograf_manifest)
 casparcg_add_build_dependencies(ograf_manifest_tests)
 
 set_target_properties(ograf_manifest_tests PROPERTIES FOLDER tests)
 add_test(NAME ograf.manifest COMMAND ograf_manifest_tests)
+
+find_program(NODE_EXECUTABLE NAMES node nodejs)
+if (NODE_EXECUTABLE)
+	add_test(
+		NAME ograf.host
+		COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/host_runtime_test.mjs
+			${CMAKE_CURRENT_SOURCE_DIR}/../host/ograf_host.html
+	)
+endif ()
