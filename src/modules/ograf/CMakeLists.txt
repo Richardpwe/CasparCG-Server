@@ -77,6 +77,8 @@ target_link_libraries(ograf_bridge PRIVATE ograf_manifest)
 
 casparcg_add_library(ograf_api
 	SOURCES
+		../../protocol/ograf/http_server.cpp
+		../../protocol/ograf/http_server.h
 		../../protocol/ograf/router.cpp
 		../../protocol/ograf/router.h
 )
@@ -85,6 +87,11 @@ target_include_directories(ograf_api PRIVATE
 )
 target_compile_definitions(ograf_api PRIVATE BOOST_JSON_NO_LIB)
 target_link_libraries(ograf_api PRIVATE ograf_bridge ograf_manifest)
+if (MSVC)
+	target_link_libraries(ograf_api PUBLIC Ws2_32.lib)
+else ()
+	target_link_libraries(ograf_api PUBLIC pthread)
+endif ()
 
 casparcg_add_module_project(ograf
 	SOURCES ${SOURCES}

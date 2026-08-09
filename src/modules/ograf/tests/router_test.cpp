@@ -3,8 +3,18 @@
 #include <modules/ograf/manifest/registry.h>
 #include <modules/ograf/service/graphics_service.h>
 
+#include <protocol/ograf/http_server.h>
 #include <protocol/ograf/router.h>
 
+#include <boost/asio/connect.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/write.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/core/tcp_stream.hpp>
+#include <boost/beast/http/read.hpp>
+#include <boost/beast/http/string_body.hpp>
+#include <boost/beast/http/write.hpp>
 #include <boost/json/parse.hpp>
 
 #include <chrono>
@@ -121,5 +131,80 @@ BOOST_AUTO_TEST_CASE(api_router_returns_rfc7807_errors)
     const auto options = router.route({"OPTIONS", "/ograf/v1/graphics", ""});
     BOOST_TEST(options.status == 204);
 
+    std::filesystem::remove_all(root);
+}
+
+BOOST_AUTO_TEST_CASE(api_http_server_serves_router_over_loopback_with_cors)
+{
+    namespace asio  = boost::asio;
+    namespace beast = boost::beast;
+    namespace http  = beast::http;
+    using tcp       = asio::ip::tcp;
+
+    const auto                           root = api_test_root();
+    caspar::ograf::manifest_registry     registry(root);
+    empty_graphics_service               service;
+    caspar::protocol::ograf::router      router(registry, service, "/ograf/v1", "test-version");
+    caspar::protocol::ograf::http_server server(router, caspar::protocol::ograf::http_server_config{"127.0.0.1", 0});
+
+    asio::io_context  context;
+    beast::tcp_stream stream(context);
+    stream.connect({asio::ip::make_address("127.0.0.1"), server.port()});
+
+    http::request<http::string_body> request{http::verb::get, "/ograf/v1/", 11};
+    request.set(http::field::host, "127.0.0.1");
+    http::write(stream, request);
+
+    beast::flat_buffer                buffer;
+    http::response<http::string_body> response;
+    http::read(stream, buffer, response);
+
+    BOOST_TEST(response.result_int() == 200);
+    BOOST_TEST(response[http::field::access_control_allow_origin] == "*");
+    BOOST_TEST(boost::json::parse(response.body()).as_object().at("version").as_string() == "test-version");
+
+    boost::system::error_code ignored;
+    stream.socket().shutdown(tcp::socket::shutdown_both, ignored);
+    std::filesystem::remove_all(root);
+}
+
+BOOST_AUTO_TEST_CASE(api_http_server_rejects_oversized_bodies_with_problem_response)
+{
+    namespace asio  = boost::asio;
+    namespace beast = boost::beast;
+    namespace http  = beast::http;
+    using tcp       = asio::ip::tcp;
+
+    const auto                           root = api_test_root();
+    caspar::ograf::manifest_registry     registry(root);
+    empty_graphics_service               service;
+    caspar::protocol::ograf::router      router(registry, service, "/ograf/v1", "test-version");
+    caspar::protocol::ograf::http_server server(router, caspar::protocol::ograf::http_server_config{"127.0.0.1", 0});
+
+    asio::io_context  context;
+    beast::tcp_stream stream(context);
+    stream.connect({asio::ip::make_address("127.0.0.1"), server.port()});
+
+    const std::string target = "/ograf/v1/renderers/casparcg/target/graphicInstance/load";
+    const std::string request = "POST " + target + " HTTP/1.1\r\n"
+                                "Host: 127.0.0.1\r\n"
+                                "Content-Type: application/json\r\n"
+                                "Content-Length: 4194305\r\n\r\n";
+    asio::write(stream.socket(), asio::buffer(request));
+
+    beast::flat_buffer                buffer;
+    http::response<http::string_body> response;
+    http::read(stream, buffer, response);
+
+    BOOST_TEST(response.result_int() == 413);
+    BOOST_TEST(response[http::field::content_type] == "application/problem+json");
+    BOOST_TEST(response[http::field::access_control_allow_origin] == "*");
+    const auto problem = boost::json::parse(response.body()).as_object();
+    BOOST_TEST(problem.at("title").as_string() == "Payload Too Large");
+    BOOST_TEST(problem.at("status").as_int64() == 413);
+    BOOST_TEST(problem.at("instance").as_string() == target);
+
+    boost::system::error_code ignored;
+    stream.socket().shutdown(tcp::socket::shutdown_both, ignored);
     std::filesystem::remove_all(root);
 }
