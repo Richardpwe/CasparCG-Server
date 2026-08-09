@@ -75,6 +75,17 @@ target_include_directories(ograf_bridge PRIVATE
 target_compile_definitions(ograf_bridge PRIVATE BOOST_JSON_NO_LIB)
 target_link_libraries(ograf_bridge PRIVATE ograf_manifest)
 
+casparcg_add_library(ograf_api
+	SOURCES
+		../../protocol/ograf/router.cpp
+		../../protocol/ograf/router.h
+)
+target_include_directories(ograf_api PRIVATE
+	${CMAKE_SOURCE_DIR}
+)
+target_compile_definitions(ograf_api PRIVATE BOOST_JSON_NO_LIB)
+target_link_libraries(ograf_api PRIVATE ograf_bridge ograf_manifest)
+
 casparcg_add_module_project(ograf
 	SOURCES ${SOURCES}
 	INIT_FUNCTION "ograf::init"
@@ -84,15 +95,17 @@ target_include_directories(ograf PRIVATE
 	${CMAKE_CURRENT_BINARY_DIR}
 	..
 )
-target_link_libraries(ograf PRIVATE ograf_bridge ograf_manifest web)
+target_link_libraries(ograf PRIVATE ograf_api ograf_bridge ograf_manifest web)
 
 set_target_properties(ograf PROPERTIES FOLDER modules)
+set_target_properties(ograf_api PROPERTIES FOLDER modules)
 set_target_properties(ograf_manifest PROPERTIES FOLDER modules)
 set_target_properties(ograf_bridge PROPERTIES FOLDER modules)
 source_group(sources\\manifest manifest/*)
 source_group(sources\\producer producer/*)
 source_group(sources\\runtime runtime/*)
 source_group(sources\\service service/*)
+source_group(sources\\protocol ../../protocol/ograf/*)
 source_group(sources\\spec ${SCHEMA_HEADERS})
 source_group(sources ./*)
 

@@ -56,7 +56,33 @@ struct located_instance
     graphic_instance instance;
 };
 
-class graphics_service
+class graphics_service_interface
+{
+  public:
+    virtual ~graphics_service_interface() = default;
+
+    virtual action_result load(render_target      target,
+                               const std::string& graphic_id,
+                               boost::json::value data,
+                               std::optional<int> cg_layer     = {},
+                               bool               play_on_load = false)                                                          = 0;
+    virtual action_result play(render_target target, const std::string& instance_id, boost::json::object params)   = 0;
+    virtual action_result update(render_target target, const std::string& instance_id, boost::json::object params) = 0;
+    virtual action_result stop(render_target target, const std::string& instance_id, boost::json::object params)   = 0;
+    virtual action_result
+    invoke_custom(render_target target, const std::string& instance_id, boost::json::object params) = 0;
+    virtual action_result dispose(render_target target, const std::string& instance_id)             = 0;
+
+    virtual std::vector<located_instance> clear(const std::vector<graphic_filter>& filters) = 0;
+
+    virtual std::vector<render_target>    targets()                                          = 0;
+    virtual std::vector<graphic_instance> instances(render_target target)                    = 0;
+    virtual std::vector<located_instance> all_instances()                                    = 0;
+    virtual boost::json::object           render_characteristics(render_target target) const = 0;
+    virtual bool                          has_target(render_target target) const             = 0;
+};
+
+class graphics_service final : public graphics_service_interface
 {
   public:
     graphics_service(std::vector<spl::shared_ptr<core::video_channel>> channels, manifest_registry& registry);
@@ -67,20 +93,21 @@ class graphics_service
                        const std::string& graphic_id,
                        boost::json::value data,
                        std::optional<int> cg_layer     = {},
-                       bool               play_on_load = false);
-    action_result play(render_target target, const std::string& instance_id, boost::json::object params);
-    action_result update(render_target target, const std::string& instance_id, boost::json::object params);
-    action_result stop(render_target target, const std::string& instance_id, boost::json::object params);
-    action_result invoke_custom(render_target target, const std::string& instance_id, boost::json::object params);
-    action_result dispose(render_target target, const std::string& instance_id);
+                       bool               play_on_load = false) override;
+    action_result play(render_target target, const std::string& instance_id, boost::json::object params) override;
+    action_result update(render_target target, const std::string& instance_id, boost::json::object params) override;
+    action_result stop(render_target target, const std::string& instance_id, boost::json::object params) override;
+    action_result
+    invoke_custom(render_target target, const std::string& instance_id, boost::json::object params) override;
+    action_result dispose(render_target target, const std::string& instance_id) override;
 
-    std::vector<located_instance> clear(const std::vector<graphic_filter>& filters);
+    std::vector<located_instance> clear(const std::vector<graphic_filter>& filters) override;
 
-    std::vector<render_target>    targets();
-    std::vector<graphic_instance> instances(render_target target);
-    std::vector<located_instance> all_instances();
-    boost::json::object           render_characteristics(render_target target) const;
-    bool                          has_target(render_target target) const;
+    std::vector<render_target>    targets() override;
+    std::vector<graphic_instance> instances(render_target target) override;
+    std::vector<located_instance> all_instances() override;
+    boost::json::object           render_characteristics(render_target target) const override;
+    bool                          has_target(render_target target) const override;
 
   private:
     spl::shared_ptr<core::video_channel> channel(int index) const;
