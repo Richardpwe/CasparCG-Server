@@ -85,6 +85,40 @@ class remove_handler : public CefV8Handler
     IMPLEMENT_REFCOUNTING(remove_handler);
 };
 
+class post_message_handler : public CefV8Handler
+{
+    CefRefPtr<CefBrowser> browser_;
+
+  public:
+    explicit post_message_handler(const CefRefPtr<CefBrowser>& browser)
+        : browser_(browser)
+    {
+    }
+
+    bool Execute(const CefString&,
+                 CefRefPtr<CefV8Value>,
+                 const CefV8ValueList& arguments,
+                 CefRefPtr<CefV8Value>&,
+                 CefString& exception) override
+    {
+        if (!CefCurrentlyOn(TID_RENDERER) || arguments.size() != 1 || !arguments[0]->IsString()) {
+            exception = "postMessage expects one string argument";
+            return true;
+        }
+
+        auto message = CefProcessMessage::Create(WEB_MESSAGE_NAME);
+        message->GetArgumentList()->SetString(0, arguments[0]->GetStringValue());
+
+        CefRefPtr<CefFrame> main_frame = browser_->GetMainFrame();
+        if (main_frame) {
+            main_frame->SendProcessMessage(PID_BROWSER, message);
+        }
+        return true;
+    }
+
+    IMPLEMENT_REFCOUNTING(post_message_handler);
+};
+
 class renderer_application
     : public CefApp
     , public CefRenderProcessHandler
@@ -116,6 +150,12 @@ class renderer_application
         auto window = context->GetGlobal();
         window->SetValue(
             "remove", CefV8Value::CreateFunction("remove", new remove_handler(browser)), V8_PROPERTY_ATTRIBUTE_NONE);
+
+        auto native_bridge = CefV8Value::CreateObject(nullptr, nullptr);
+        native_bridge->SetValue("postMessage",
+                                CefV8Value::CreateFunction("postMessage", new post_message_handler(browser)),
+                                V8_PROPERTY_ATTRIBUTE_READONLY);
+        window->SetValue("casparNative", native_bridge, V8_PROPERTY_ATTRIBUTE_READONLY);
 
         CefRefPtr<CefV8Value>     ret;
         CefRefPtr<CefV8Exception> exception;

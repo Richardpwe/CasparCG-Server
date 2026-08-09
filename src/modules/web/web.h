@@ -22,6 +22,7 @@ namespace caspar::web {
 
 inline const std::string REMOVE_MESSAGE_NAME = "CasparCGRemove";
 inline const std::string LOG_MESSAGE_NAME    = "CasparCGLog";
+inline const std::string WEB_MESSAGE_NAME    = "CasparCGWebMessage";
 
 bool intercept_command_line(int argc, char** argv);
 void init(const core::module_dependencies& dependencies);

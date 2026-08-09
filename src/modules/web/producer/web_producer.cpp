@@ -111,6 +111,7 @@ class renderer_client
 {
     std::wstring                        name_;
     std::wstring                        url_;
+    message_handler                     message_handler_;
     spl::shared_ptr<diagnostics::graph> graph_;
     core::monitor::state                state_;
     mutable std::mutex                  state_mutex_;
@@ -153,9 +154,11 @@ class renderer_client
                     bool                                       gpu_enabled,
                     bool                                       shared_texture_enable,
                     std::wstring                               url,
-                    std::wstring                               name)
+                    std::wstring                               name,
+                    message_handler                            on_message)
         : name_(std::move(name))
         , url_(std::move(url))
+        , message_handler_(std::move(on_message))
         , graph_(graph)
         , frame_factory_(std::move(frame_factory))
         , format_desc_(std::move(format_desc))
@@ -557,6 +560,17 @@ class renderer_client
             auto msg      = log::replace_nonprintable_copy(args->GetString(1).ToWString(), L'?');
 
             BOOST_LOG_SEV(log::logger::get(), severity) << print() << L" [renderer_process] " << msg;
+            return true;
+        }
+        if (name == web::WEB_MESSAGE_NAME) {
+            if (message_handler_) {
+                try {
+                    message_handler_(message->GetArgumentList()->GetString(0).ToString());
+                } catch (...) {
+                    CASPAR_LOG_CURRENT_EXCEPTION();
+                }
+            }
+            return true;
         }
 
         return false;
@@ -623,7 +637,7 @@ class renderer_client
     IMPLEMENT_REFCOUNTING(renderer_client);
 };
 
-class renderer_producer : public core::frame_producer
+class renderer_producer : public producer
 {
     core::video_format_desc             format_desc_;
     const std::wstring                  url_;
@@ -636,7 +650,8 @@ class renderer_producer : public core::frame_producer
     renderer_producer(const spl::shared_ptr<core::frame_factory>& frame_factory,
                       const core::video_format_desc&              format_desc,
                       std::wstring                                url,
-                      std::wstring                                name)
+                      std::wstring                                name,
+                      message_handler                             on_message)
         : format_desc_(format_desc)
         , url_(std::move(url))
         , name_(std::move(name))
@@ -644,7 +659,8 @@ class renderer_producer : public core::frame_producer
         invoke([&] {
             auto gpu = is_gpu_shared_texture_enabled();
 
-            client_ = new renderer_client(frame_factory, graph_, format_desc, gpu.first, gpu.second, url_, name_);
+            client_ = new renderer_client(
+                frame_factory, graph_, format_desc, gpu.first, gpu.second, url_, name_, std::move(on_message));
 
             CefWindowInfo window_info;
             window_info.bounds.width                 = format_desc.square_width;
@@ -708,10 +724,17 @@ class renderer_producer : public core::frame_producer
         if (javascript == L"RELOAD") {
             client_->reload();
         } else {
-            client_->execute_javascript(javascript);
+            execute_javascript(javascript);
         }
 
         return make_ready_future(std::wstring());
+    }
+
+    void execute_javascript(const std::wstring& javascript) override
+    {
+        if (client_ != nullptr) {
+            client_->execute_javascript(javascript);
+        }
     }
 
     std::wstring print() const override { return name_ + L"[" + url_ + L"]"; }
@@ -727,13 +750,14 @@ class renderer_producer : public core::frame_producer
     }
 };
 
-spl::shared_ptr<core::frame_producer> create_producer(const spl::shared_ptr<core::frame_factory>& frame_factory,
-                                                      const core::video_format_desc&              format_desc,
-                                                      std::wstring                                url,
-                                                      std::wstring                                name)
+spl::shared_ptr<producer> create_producer(const spl::shared_ptr<core::frame_factory>& frame_factory,
+                                         const core::video_format_desc&              format_desc,
+                                         std::wstring                                url,
+                                         std::wstring                                name,
+                                         message_handler                             on_message)
 {
     return spl::make_shared<renderer_producer>(
-        frame_factory, format_desc, std::move(url), std::move(name));
+        frame_factory, format_desc, std::move(url), std::move(name), std::move(on_message));
 }
 
 } // namespace caspar::web
