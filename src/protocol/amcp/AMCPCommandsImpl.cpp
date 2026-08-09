@@ -705,6 +705,45 @@ std::wstring data_remove_command(command_context& ctx)
 
 // Template Graphics Commands
 
+std::wstring cg_reply(const core::cg_command_result& result)
+{
+    std::wstringstream reply;
+    reply << result.response_code << L" CG OK\r\n";
+    if (result.response_code == 201) {
+        reply << result.payload << L"\r\n";
+    }
+    return reply.str();
+}
+
+std::wstring optional_cg_parameter(const command_context& ctx, const std::size_t index)
+{
+    return ctx.parameters.size() > index ? ctx.parameters[index] : std::wstring();
+}
+
+std::wstring cg_data_parameter(const command_context&              ctx,
+                               const std::size_t                    index,
+                               const spl::shared_ptr<core::cg_proxy>& proxy,
+                               const bool                           missing_file_is_empty)
+{
+    if (ctx.parameters.size() <= index) {
+        return {};
+    }
+
+    const auto& data = ctx.parameters[index];
+    if (proxy->uses_json_data() || data.empty() || data.front() == L'<' || data.front() == L'{') {
+        return data;
+    }
+
+    std::wstring filename = env::data_folder();
+    filename.append(data);
+    filename.append(L".ftd");
+
+    if (const auto found_file = find_case_insensitive(filename)) {
+        return read_file(boost::filesystem::path(*found_file));
+    }
+    return missing_file_is_empty ? std::wstring() : read_file(boost::filesystem::path(filename));
+}
+
 std::wstring cg_add_command(command_context& ctx)
 {
     // CG 1 ADD 0 "template_folder/templatename" [STARTLABEL] 0/1 [DATA]
@@ -724,28 +763,6 @@ std::wstring cg_add_command(command_context& ctx)
         bDoStart = ctx.parameters.at(2).at(0) == L'1' ? true : false;
     }
 
-    const wchar_t* pDataString = nullptr;
-    std::wstring   dataFromFile;
-    if (ctx.parameters.size() > dataIndex) { // read data
-        const std::wstring& dataString = ctx.parameters.at(dataIndex);
-
-        if (dataString.at(0) == L'<' || dataString.at(0) == L'{') // the data is XML or Json
-            pDataString = dataString.c_str();
-        else {
-            // The data is not an XML-string, it must be a filename
-            std::wstring filename = env::data_folder();
-            filename.append(dataString);
-            filename.append(L".ftd");
-
-            auto found_file = find_case_insensitive(filename);
-
-            if (found_file) {
-                dataFromFile = read_file(boost::filesystem::path(*found_file));
-                pDataString  = dataFromFile.c_str();
-            }
-        }
-    }
-
     auto filename = ctx.parameters.at(1);
     auto proxy =
         ctx.static_context->cg_registry->get_or_create_proxy(spl::make_shared_ptr(ctx.channel.raw_channel),
@@ -755,20 +772,17 @@ std::wstring cg_add_command(command_context& ctx)
 
     if (proxy == core::cg_proxy::empty())
         CASPAR_THROW_EXCEPTION(file_not_found() << msg_info(L"Could not find template " + filename));
-    else
-        proxy->add(layer, filename, bDoStart, label, pDataString != nullptr ? pDataString : L"");
 
-    return L"202 CG OK\r\n";
+    return cg_reply(
+        proxy->add_action(layer, filename, bDoStart, label, cg_data_parameter(ctx, dataIndex, proxy, true)));
 }
 
 std::wstring cg_play_command(command_context& ctx)
 {
     int layer = std::stoi(ctx.parameters.at(0));
-    ctx.static_context->cg_registry
-        ->get_proxy(spl::make_shared_ptr(ctx.channel.raw_channel), ctx.layer_index(core::cg_proxy::DEFAULT_LAYER))
-        ->play(layer);
-
-    return L"202 CG OK\r\n";
+    auto proxy = ctx.static_context->cg_registry->get_proxy(
+        spl::make_shared_ptr(ctx.channel.raw_channel), ctx.layer_index(core::cg_proxy::DEFAULT_LAYER));
+    return cg_reply(proxy->play_action(layer, optional_cg_parameter(ctx, 1)));
 }
 
 spl::shared_ptr<core::cg_proxy> get_expected_cg_proxy(command_context& ctx)
@@ -785,25 +799,19 @@ spl::shared_ptr<core::cg_proxy> get_expected_cg_proxy(command_context& ctx)
 std::wstring cg_stop_command(command_context& ctx)
 {
     int layer = std::stoi(ctx.parameters.at(0));
-    get_expected_cg_proxy(ctx)->stop(layer);
-
-    return L"202 CG OK\r\n";
+    return cg_reply(get_expected_cg_proxy(ctx)->stop_action(layer, optional_cg_parameter(ctx, 1)));
 }
 
 std::wstring cg_next_command(command_context& ctx)
 {
     int layer = std::stoi(ctx.parameters.at(0));
-    get_expected_cg_proxy(ctx)->next(layer);
-
-    return L"202 CG OK\r\n";
+    return cg_reply(get_expected_cg_proxy(ctx)->next_action(layer, optional_cg_parameter(ctx, 1)));
 }
 
 std::wstring cg_remove_command(command_context& ctx)
 {
     int layer = std::stoi(ctx.parameters.at(0));
-    get_expected_cg_proxy(ctx)->remove(layer);
-
-    return L"202 CG OK\r\n";
+    return cg_reply(get_expected_cg_proxy(ctx)->remove_action(layer));
 }
 
 std::wstring cg_clear_command(command_context& ctx)
@@ -816,31 +824,16 @@ std::wstring cg_clear_command(command_context& ctx)
 std::wstring cg_update_command(command_context& ctx)
 {
     int layer = std::stoi(ctx.parameters.at(0));
-
-    std::wstring dataString = ctx.parameters.at(1);
-    if (dataString.at(0) != L'<' && dataString.at(0) != L'{') {
-        // The data is not XML or Json, it must be a filename
-        std::wstring filename = env::data_folder();
-        filename.append(dataString);
-        filename.append(L".ftd");
-
-        dataString = read_file(boost::filesystem::path(filename));
-    }
-
-    get_expected_cg_proxy(ctx)->update(layer, dataString);
-
-    return L"202 CG OK\r\n";
+    auto proxy = get_expected_cg_proxy(ctx);
+    return cg_reply(
+        proxy->update_action(layer, cg_data_parameter(ctx, 1, proxy, false), optional_cg_parameter(ctx, 2)));
 }
 
 std::wstring cg_invoke_command(command_context& ctx)
 {
-    std::wstringstream replyString;
-    replyString << L"201 CG OK\r\n";
     int  layer  = std::stoi(ctx.parameters.at(0));
-    auto result = get_expected_cg_proxy(ctx)->invoke(layer, ctx.parameters.at(1));
-    replyString << result << L"\r\n";
-
-    return replyString.str();
+    return cg_reply(get_expected_cg_proxy(ctx)->invoke_action(
+        layer, ctx.parameters.at(1), optional_cg_parameter(ctx, 2)));
 }
 
 // Mixer Commands

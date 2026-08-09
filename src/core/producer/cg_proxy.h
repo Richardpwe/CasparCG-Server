@@ -31,6 +31,12 @@
 
 namespace caspar { namespace core {
 
+struct cg_command_result
+{
+    unsigned int response_code = 202;
+    std::wstring payload;
+};
+
 class cg_proxy
 {
   public:
@@ -49,6 +55,57 @@ class cg_proxy
     virtual void         next(int layer)                              = 0;
     virtual void         update(int layer, const std::wstring& data)  = 0;
     virtual std::wstring invoke(int layer, const std::wstring& label) = 0;
+
+    virtual bool uses_json_data() const { return false; }
+
+    virtual cg_command_result add_action(int                 layer,
+                                         const std::wstring& template_name,
+                                         bool                play_on_load,
+                                         const std::wstring& start_from_label,
+                                         const std::wstring& data)
+    {
+        add(layer, template_name, play_on_load, start_from_label, data);
+        return {};
+    }
+
+    virtual cg_command_result play_action(int layer, const std::wstring&)
+    {
+        play(layer);
+        return {};
+    }
+
+    virtual cg_command_result stop_action(int layer, const std::wstring&)
+    {
+        stop(layer);
+        return {};
+    }
+
+    virtual cg_command_result next_action(int layer, const std::wstring&)
+    {
+        next(layer);
+        return {};
+    }
+
+    virtual cg_command_result update_action(int                 layer,
+                                            const std::wstring& data,
+                                            const std::wstring&)
+    {
+        update(layer, data);
+        return {};
+    }
+
+    virtual cg_command_result invoke_action(int                 layer,
+                                            const std::wstring& label,
+                                            const std::wstring&)
+    {
+        return {201, invoke(layer, label)};
+    }
+
+    virtual cg_command_result remove_action(int layer)
+    {
+        remove(layer);
+        return {};
+    }
 
     static const spl::shared_ptr<cg_proxy>& empty();
 };
