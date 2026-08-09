@@ -195,5 +195,6 @@ jobs:
                     -G Ninja
 
                   cmake --build build
+                  ctest --test-dir build --output-on-failure
               env:
                   CI: 1

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 # Project settings
 project("CasparCG Server")
+include(CTest)
+
 set(CONFIG_VERSION_MAJOR 2)
 set(CONFIG_VERSION_MINOR 6)
 set(CONFIG_VERSION_BUG 0)
@@ -14,6 +16,15 @@ set(CASPARCG_DOWNLOAD_MIRROR https://github.com/CasparCG/dependencies/releases/d
 set(CASPARCG_DOWNLOAD_CACHE ${CMAKE_CURRENT_BINARY_DIR}/external CACHE STRING "Download cache directory for cmake ExternalProjects")
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/CasparCG_WebOptions.cmake")
+
+if (BUILD_TESTING)
+    add_test(
+        NAME build.web-options
+        COMMAND ${CMAKE_COMMAND}
+            "-DWEB_OPTIONS_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/CasparCG_WebOptions.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/tests/WebOptionsTest.cmake"
+    )
+endif ()
 
 set(DIAG_FONT_PATH "LiberationMono-Regular.ttf" CACHE STRING
     "Path to font that will be used to load diag font at runtime. By default
