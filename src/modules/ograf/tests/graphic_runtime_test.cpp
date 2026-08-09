@@ -144,6 +144,33 @@ BOOST_AUTO_TEST_CASE(runtime_disposes_previous_instance_on_same_cg_layer)
     BOOST_TEST(runtime.find(second.graphic_instance_id).has_value());
 }
 
+BOOST_AUTO_TEST_CASE(runtime_keeps_multiple_cg_layer_owners_on_same_target)
+{
+    caspar::ograf::graphic_runtime runtime(
+        [](boost::json::object request, std::chrono::milliseconds) { return successful_response(request); },
+        30s,
+        5s);
+
+    const auto first =
+        runtime.load(test_manifest(), "file:///graphic/main.mjs", {{"name", "One"}}, {}, 4, false);
+    const auto second =
+        runtime.load(test_manifest(), "file:///graphic/main.mjs", {{"name", "Two"}}, {}, 5, false);
+
+    BOOST_TEST(runtime.list().size() == 2u);
+    BOOST_REQUIRE(runtime.find_by_cg_layer(4));
+    BOOST_REQUIRE(runtime.find_by_cg_layer(5));
+    BOOST_TEST(runtime.find_by_cg_layer(4)->id == first.graphic_instance_id);
+    BOOST_TEST(runtime.find_by_cg_layer(5)->id == second.graphic_instance_id);
+
+    runtime.dispose(first.graphic_instance_id);
+
+    BOOST_TEST(!runtime.find(first.graphic_instance_id).has_value());
+    BOOST_TEST(runtime.find(second.graphic_instance_id).has_value());
+    BOOST_TEST(!runtime.find_by_cg_layer(4).has_value());
+    BOOST_REQUIRE(runtime.find_by_cg_layer(5));
+    BOOST_TEST(runtime.find_by_cg_layer(5)->id == second.graphic_instance_id);
+}
+
 BOOST_AUTO_TEST_CASE(runtime_validates_data_and_custom_action_payloads)
 {
     caspar::ograf::graphic_runtime runtime(
