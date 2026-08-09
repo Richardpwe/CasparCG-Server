@@ -2,7 +2,9 @@ add_executable(ograf_manifest_tests
 	manifest_test.cpp
 	registry_test.cpp
 	action_dispatcher_test.cpp
+	action_parameters_test.cpp
 	graphic_runtime_test.cpp
+	legacy_cg_proxy_test.cpp
 	request_policy_test.cpp
 )
 
