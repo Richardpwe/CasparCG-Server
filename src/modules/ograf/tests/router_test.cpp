@@ -17,55 +17,80 @@
 #include <boost/beast/http/write.hpp>
 #include <boost/json/parse.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <future>
 #include <mutex>
+#include <regex>
+#include <set>
+#include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 
 class empty_graphics_service final : public caspar::ograf::graphics_service_interface
 {
   public:
+    bool                                         clear_called = false;
+    std::string                                  last_operation;
+    caspar::ograf::render_target                 last_target;
+    std::string                                  last_id;
+    boost::json::value                           last_data;
+    boost::json::object                          last_params;
     std::function<caspar::ograf::action_result()> play_override;
 
-    caspar::ograf::action_result
-    load(caspar::ograf::render_target, const std::string&, boost::json::value, std::optional<int>, bool) override
+    caspar::ograf::action_result load(caspar::ograf::render_target target,
+                                      const std::string&           graphic_id,
+                                      boost::json::value           data,
+                                      std::optional<int>,
+                                      bool) override
     {
-        return {};
+        last_operation = "load";
+        last_target    = target;
+        last_id        = graphic_id;
+        last_data      = std::move(data);
+        return success("loaded-instance");
     }
 
-    caspar::ograf::action_result play(caspar::ograf::render_target, const std::string&, boost::json::object) override
+    caspar::ograf::action_result
+    play(caspar::ograf::render_target target, const std::string& instance_id, boost::json::object params) override
     {
         if (play_override) {
             return play_override();
         }
-        return {};
-    }
-
-    caspar::ograf::action_result update(caspar::ograf::render_target, const std::string&, boost::json::object) override
-    {
-        return {};
-    }
-
-    caspar::ograf::action_result stop(caspar::ograf::render_target, const std::string&, boost::json::object) override
-    {
-        return {};
+        return record("play", target, instance_id, std::move(params));
     }
 
     caspar::ograf::action_result
-    invoke_custom(caspar::ograf::render_target, const std::string&, boost::json::object) override
+    update(caspar::ograf::render_target target, const std::string& instance_id, boost::json::object params) override
     {
-        return {};
+        return record("update", target, instance_id, std::move(params));
+    }
+
+    caspar::ograf::action_result
+    stop(caspar::ograf::render_target target, const std::string& instance_id, boost::json::object params) override
+    {
+        return record("stop", target, instance_id, std::move(params));
+    }
+
+    caspar::ograf::action_result invoke_custom(caspar::ograf::render_target target,
+                                               const std::string&           instance_id,
+                                               boost::json::object          params) override
+    {
+        return record("custom", target, instance_id, std::move(params));
     }
 
     caspar::ograf::action_result dispose(caspar::ograf::render_target, const std::string&) override { return {}; }
 
     std::vector<caspar::ograf::located_instance> clear(const std::vector<caspar::ograf::graphic_filter>&) override
     {
+        clear_called = true;
         return {};
     }
 
@@ -78,6 +103,24 @@ class empty_graphics_service final : public caspar::ograf::graphics_service_inte
     boost::json::object render_characteristics(caspar::ograf::render_target) const override { return {}; }
 
     bool has_target(caspar::ograf::render_target) const override { return false; }
+
+  private:
+    static caspar::ograf::action_result success(const std::string& instance_id)
+    {
+        return {200, "OK", boost::json::object{}, std::nullopt, instance_id};
+    }
+
+    caspar::ograf::action_result record(std::string                  operation,
+                                        caspar::ograf::render_target target,
+                                        std::string                  instance_id,
+                                        boost::json::object          params)
+    {
+        last_operation = std::move(operation);
+        last_target    = target;
+        last_id        = std::move(instance_id);
+        last_params    = std::move(params);
+        return success(last_id);
+    }
 };
 
 std::filesystem::path api_test_root()
@@ -86,6 +129,35 @@ std::filesystem::path api_test_root()
     auto       root   = std::filesystem::temp_directory_path() / ("casparcg-ograf-api-" + std::to_string(suffix));
     std::filesystem::create_directories(root);
     return root;
+}
+
+std::set<std::pair<std::string, std::string>> openapi_control_operations()
+{
+    std::ifstream stream(OGRAF_OPENAPI_SNAPSHOT);
+    if (!stream) {
+        throw std::runtime_error("Could not open OGraf OpenAPI snapshot");
+    }
+
+    const std::regex                              path_pattern(R"(^  (/[^:]*):\s*$)");
+    const std::regex                              operation_pattern(R"(^    (get|post|put|delete):\s*$)");
+    std::set<std::pair<std::string, std::string>> result;
+    std::string                                   current_path;
+    std::string                                   line;
+    std::smatch                                   match;
+    while (std::getline(stream, line)) {
+        if (std::regex_match(line, match, path_pattern)) {
+            current_path = match[1].str();
+        } else if (!current_path.empty() && std::regex_match(line, match, operation_pattern)) {
+            auto method = match[1].str();
+            std::ranges::transform(method, method.begin(), [](const unsigned char character) {
+                return static_cast<char>(std::toupper(character));
+            });
+            if (method != "DELETE") {
+                result.emplace(current_path, std::move(method));
+            }
+        }
+    }
+    return result;
 }
 
 } // namespace
@@ -139,6 +211,89 @@ BOOST_AUTO_TEST_CASE(api_router_returns_rfc7807_errors)
 
     const auto options = router.route({"OPTIONS", "/ograf/v1/graphics", ""});
     BOOST_TEST(options.status == 204);
+
+    std::filesystem::remove_all(root);
+}
+
+BOOST_AUTO_TEST_CASE(api_routes_cover_pinned_openapi_control_contract)
+{
+    const std::set<std::pair<std::string, std::string>> expected{
+        {"/", "GET"},
+        {"/graphics", "GET"},
+        {"/graphics/{graphicId}", "GET"},
+        {"/renderers", "GET"},
+        {"/renderers/{rendererId}", "GET"},
+        {"/renderers/{rendererId}/target", "GET"},
+        {"/renderers/{rendererId}/customActions/{customActionId}", "POST"},
+        {"/renderers/{rendererId}/target/graphicInstance/clear", "PUT"},
+        {"/renderers/{rendererId}/target/graphicInstance/load", "POST"},
+        {"/renderers/{rendererId}/target/graphicInstance/updateAction", "POST"},
+        {"/renderers/{rendererId}/target/graphicInstance/playAction", "POST"},
+        {"/renderers/{rendererId}/target/graphicInstance/stopAction", "POST"},
+        {"/renderers/{rendererId}/target/graphicInstance/customActions/{customActionId}", "POST"},
+    };
+    BOOST_TEST(openapi_control_operations() == expected);
+}
+
+BOOST_AUTO_TEST_CASE(api_control_routes_map_openapi_requests_to_graphics_service)
+{
+    const auto                       root = api_test_root();
+    caspar::ograf::manifest_registry registry(root);
+    empty_graphics_service           service;
+    caspar::protocol::ograf::router  router(registry, service, "/ograf/v1");
+
+    const auto load = router.route(
+        {"POST",
+         "/ograf/v1/renderers/casparcg/target/graphicInstance/load",
+         R"({"renderTarget":{"channel":1,"layer":20},"graphicId":"simple","params":{"data":{"name":"Ada"}}})"});
+    BOOST_TEST(load.status == 200);
+    BOOST_TEST(service.last_operation == "load");
+    BOOST_TEST(service.last_target.channel == 1);
+    BOOST_TEST(service.last_target.layer == 20);
+    BOOST_TEST(service.last_id == "simple");
+    BOOST_TEST(service.last_data.as_object().at("name").as_string() == "Ada");
+    BOOST_TEST(boost::json::parse(load.body).as_object().at("graphicInstanceId").as_string() == "loaded-instance");
+
+    const auto play = router.route(
+        {"POST",
+         "/ograf/v1/renderers/casparcg/target/graphicInstance/playAction",
+         R"({"renderTarget":{"channel":1,"layer":20},"graphicInstanceId":"instance-1","params":{"goto":2,"skipAnimation":true}})"});
+    BOOST_TEST(play.status == 200);
+    BOOST_TEST(service.last_operation == "play");
+    BOOST_TEST(service.last_params.at("goto").as_int64() == 2);
+    BOOST_TEST(service.last_params.at("skipAnimation").as_bool());
+
+    const auto update = router.route(
+        {"POST",
+         "/ograf/v1/renderers/casparcg/target/graphicInstance/updateAction",
+         R"({"renderTarget":{"channel":1,"layer":20},"graphicInstanceId":"instance-1","params":{"data":{"name":"Grace"},"skipAnimation":true}})"});
+    BOOST_TEST(update.status == 200);
+    BOOST_TEST(service.last_operation == "update");
+    BOOST_TEST(service.last_params.at("data").as_object().at("name").as_string() == "Grace");
+
+    const auto stop = router.route(
+        {"POST",
+         "/ograf/v1/renderers/casparcg/target/graphicInstance/stopAction",
+         R"({"renderTarget":{"channel":1,"layer":20},"graphicInstanceId":"instance-1","params":{"skipAnimation":true}})"});
+    BOOST_TEST(stop.status == 200);
+    BOOST_TEST(service.last_operation == "stop");
+    BOOST_TEST(service.last_params.at("skipAnimation").as_bool());
+
+    const auto custom = router.route(
+        {"POST",
+         "/ograf/v1/renderers/casparcg/target/graphicInstance/customActions/highlight",
+         R"({"renderTarget":{"channel":1,"layer":20},"graphicInstanceId":"instance-1","params":{"payload":{"color":"red"},"skipAnimation":false}})"});
+    BOOST_TEST(custom.status == 200);
+    BOOST_TEST(service.last_operation == "custom");
+    BOOST_TEST(service.last_params.at("id").as_string() == "highlight");
+    BOOST_TEST(service.last_params.at("payload").as_object().at("color").as_string() == "red");
+
+    const auto clear =
+        router.route({"PUT",
+                      "/ograf/v1/renderers/casparcg/target/graphicInstance/clear",
+                      R"({"filters":[{"renderTarget":{"channel":1,"layer":20},"graphicInstanceId":"instance-1"}]})"});
+    BOOST_TEST(clear.status == 200);
+    BOOST_TEST(service.clear_called);
 
     std::filesystem::remove_all(root);
 }
