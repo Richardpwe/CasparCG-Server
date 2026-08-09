@@ -205,7 +205,7 @@ manifest load_manifest(const std::filesystem::path& path)
         throw manifest_error("Invalid OGraf manifest JSON: " + parse_error.message());
     }
 
-    const auto schema_errors = v1_schema_validator().validate(document, GRAPHICS_SCHEMA_V1);
+    const auto schema_errors = v1_schema_validator().validate(document, std::string(GRAPHICS_SCHEMA_V1));
     if (!schema_errors.empty()) {
         throw manifest_error("Invalid OGraf v1 manifest: " + schema_errors.front());
     }
@@ -256,7 +256,9 @@ manifest load_manifest(const std::filesystem::path& path)
     if (const auto* actions = input.if_contains("customActions"); actions != nullptr) {
         for (const auto& action_value : actions->as_array()) {
             const auto& action = action_value.as_object();
-            result.custom_actions.push_back({json_string(action, "id"), json_string(action, "name")});
+            const auto* schema = action.if_contains("schema");
+            result.custom_actions.push_back(
+                {json_string(action, "id"), json_string(action, "name"), schema != nullptr ? *schema : value()});
         }
     }
 

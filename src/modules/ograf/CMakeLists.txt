@@ -41,6 +41,8 @@ set(SOURCES
 	ograf_host.h
 	ograf.cpp
 	ograf.h
+	runtime/ograf_producer.cpp
+	runtime/ograf_producer.h
 )
 
 bin2c("host/ograf_host.html" "ograf_host.h" "caspar::ograf::host" "document")
@@ -58,6 +60,8 @@ casparcg_add_library(ograf_bridge
 	SOURCES
 		runtime/action_dispatcher.cpp
 		runtime/action_dispatcher.h
+		runtime/graphic_runtime.cpp
+		runtime/graphic_runtime.h
 )
 target_include_directories(ograf_bridge PRIVATE
 	${CMAKE_SOURCE_DIR}
@@ -71,6 +75,7 @@ casparcg_add_module_project(ograf
 )
 target_include_directories(ograf PRIVATE
 	${CMAKE_CURRENT_BINARY_DIR}
+	..
 )
 target_link_libraries(ograf PRIVATE ograf_bridge ograf_manifest web)
 

@@ -21,6 +21,7 @@
 #include <boost/range/algorithm/remove_if.hpp>
 
 #include <include/cef_app.h>
+#include <include/cef_version.h>
 
 #ifdef WIN32
 #include <accelerator/d3d/d3d_device.h>
@@ -370,5 +371,7 @@ std::pair<bool, bool> is_gpu_shared_texture_enabled()
 
     return std::make_pair(enable_gpu, shared_texture_enable);
 }
+
+std::string browser_engine_version() { return std::to_string(CEF_VERSION_MAJOR); }
 
 } // namespace caspar::web

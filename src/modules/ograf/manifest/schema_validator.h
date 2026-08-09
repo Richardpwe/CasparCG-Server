@@ -28,6 +28,8 @@ class schema_validator
     schema_validator();
 
     std::vector<std::string> validate(const boost::json::value& instance, const std::string& schema_id) const;
+    std::vector<std::string> validate(const boost::json::value& instance,
+                                      const boost::json::value& schema) const;
 
   private:
     class implementation;

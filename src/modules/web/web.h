@@ -32,5 +32,6 @@ void              invoke(const std::function<void()>& func);
 std::future<void> begin_invoke(const std::function<void()>& func);
 
 std::pair<bool, bool> is_gpu_shared_texture_enabled();
+std::string           browser_engine_version();
 
 } // namespace caspar::web

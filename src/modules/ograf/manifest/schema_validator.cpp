@@ -364,6 +364,13 @@ class schema_validator::implementation
         validate_schema(instance, schema->second, "$", errors, 0);
         return errors;
     }
+
+    std::vector<std::string> validate(const value& instance, const value& schema) const
+    {
+        std::vector<std::string> errors;
+        validate_schema(instance, schema, "$", errors, 0);
+        return errors;
+    }
 };
 
 schema_validator::schema_validator()
@@ -375,6 +382,12 @@ std::vector<std::string> schema_validator::validate(const boost::json::value& in
                                                     const std::string&        schema_id) const
 {
     return impl_->validate(instance, schema_id);
+}
+
+std::vector<std::string> schema_validator::validate(const boost::json::value& instance,
+                                                    const boost::json::value& schema) const
+{
+    return impl_->validate(instance, schema);
 }
 
 const schema_validator& v1_schema_validator()

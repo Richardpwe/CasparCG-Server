@@ -12,6 +12,7 @@
 #pragma once
 
 #include <boost/json/object.hpp>
+#include <boost/json/value.hpp>
 
 #include <cstdint>
 #include <filesystem>
@@ -38,8 +39,9 @@ struct renderer_capabilities
 
 struct custom_action
 {
-    std::string id;
-    std::string name;
+    std::string        id;
+    std::string        name;
+    boost::json::value schema;
 };
 
 struct manifest
