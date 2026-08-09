@@ -714,7 +714,7 @@ std::wstring cg_add_command(command_context& ctx)
     bool         bDoStart  = false; //_parameters[2] alt. _parameters[3]
     unsigned int dataIndex = 3;
 
-    if (ctx.parameters.at(2).length() > 1) { // read label
+    if (ctx.parameters.at(2) != L"0" && ctx.parameters.at(2) != L"1") { // read label
         label = ctx.parameters.at(2);
         ++dataIndex;
 
