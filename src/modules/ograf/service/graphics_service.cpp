@@ -96,7 +96,17 @@ graphics_service::invoke_custom(const render_target target, const std::string& i
 
 action_result graphics_service::dispose(const render_target target, const std::string& instance_id)
 {
-    return require_instance(target, instance_id)->dispose(instance_id);
+    try {
+        auto result = require_instance(target, instance_id)->dispose(instance_id);
+        cleanup_deleted_manifests();
+        return result;
+    } catch (...) {
+        try {
+            cleanup_deleted_manifests();
+        } catch (...) {
+        }
+        throw;
+    }
 }
 
 std::vector<located_instance> graphics_service::clear(const std::vector<graphic_filter>& filters)
@@ -132,16 +142,29 @@ std::vector<located_instance> graphics_service::clear(const std::vector<graphic_
 
 std::vector<render_target> graphics_service::targets()
 {
-    std::lock_guard            lock(mutex_);
-    std::vector<render_target> result;
-    for (auto entry = producers_.begin(); entry != producers_.end();) {
-        if (entry->second.expired()) {
-            entry = producers_.erase(entry);
-        } else {
-            result.push_back(entry->first);
-            ++entry;
+    std::vector<std::pair<render_target, std::shared_ptr<ograf_producer>>> active;
+    {
+        std::lock_guard lock(mutex_);
+        for (auto entry = producers_.begin(); entry != producers_.end();) {
+            if (auto producer = entry->second.lock()) {
+                active.emplace_back(entry->first, std::move(producer));
+                ++entry;
+            } else {
+                entry = producers_.erase(entry);
+            }
         }
     }
+
+    std::vector<render_target> result;
+    std::set<std::string>      live_graphic_ids;
+    result.reserve(active.size());
+    for (const auto& [target, producer] : active) {
+        result.push_back(target);
+        for (const auto& instance : producer->instances()) {
+            live_graphic_ids.insert(instance.graphic->id);
+        }
+    }
+    registry_.remove_unused_tombstones(live_graphic_ids);
     return result;
 }
 
@@ -183,6 +206,8 @@ bool graphics_service::has_target(const render_target target) const
 {
     return target.layer >= 0 && target.channel > 0 && static_cast<std::size_t>(target.channel) <= channels_.size();
 }
+
+void graphics_service::cleanup_deleted_manifests() { static_cast<void>(targets()); }
 
 spl::shared_ptr<core::video_channel> graphics_service::channel(const int index) const
 {

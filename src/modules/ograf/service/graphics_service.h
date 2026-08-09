@@ -109,6 +109,8 @@ class graphics_service final : public graphics_service_interface
     boost::json::object           render_characteristics(render_target target) const override;
     bool                          has_target(render_target target) const override;
 
+    void cleanup_deleted_manifests();
+
   private:
     spl::shared_ptr<core::video_channel> channel(int index) const;
     std::shared_ptr<ograf_producer>      producer(render_target target, bool create);

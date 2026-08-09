@@ -42,6 +42,9 @@ std::unique_ptr<protocol::ograf::http_server> http_server_;
 void init(const core::module_dependencies& dependencies)
 {
     registry_ = std::make_unique<manifest_registry>(std::filesystem::path(env::template_folder()));
+    for (const auto& error : registry_->cleanup_orphaned_tombstones()) {
+        CASPAR_LOG(warning) << L"[ograf] " << u16(error.message) << L" " << error.path.wstring();
+    }
     registry_->refresh();
     graphics_ = std::make_unique<graphics_service>(dependencies.channels, *registry_);
 

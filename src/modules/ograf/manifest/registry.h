@@ -16,6 +16,8 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -26,6 +28,12 @@ struct registry_error
 {
     std::filesystem::path path;
     std::string           message;
+};
+
+struct manifest_tombstone
+{
+    std::string           graphic_id;
+    std::filesystem::path path;
 };
 
 enum class template_kind
@@ -43,8 +51,12 @@ class manifest_registry
     void refresh();
 
     std::vector<std::shared_ptr<const manifest>> list();
-    std::shared_ptr<const manifest>               find(const std::string& id_or_path);
-    std::vector<registry_error>                   errors() const;
+    std::shared_ptr<const manifest>              find(const std::string& id_or_path);
+    std::vector<registry_error>                  errors() const;
+
+    std::optional<manifest_tombstone> tombstone_manifest(const std::string& graphic_id);
+    void                              remove_unused_tombstones(const std::set<std::string>& live_graphic_ids);
+    std::vector<registry_error>       cleanup_orphaned_tombstones();
 
     const std::filesystem::path& root() const;
 
@@ -55,6 +67,7 @@ class manifest_registry
     std::unordered_map<std::string, std::shared_ptr<const manifest>> by_id_;
     std::unordered_map<std::string, std::shared_ptr<const manifest>> by_path_;
     std::vector<registry_error>                                      errors_;
+    std::unordered_map<std::string, std::filesystem::path>           tombstones_;
 };
 
 template_kind resolve_template(manifest_registry& registry, const std::string& name);

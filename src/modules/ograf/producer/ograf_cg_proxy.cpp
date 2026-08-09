@@ -120,7 +120,17 @@ ograf_cg_proxy::invoke_action(const int layer, const std::wstring& label, const 
 
 core::cg_command_result ograf_cg_proxy::remove_action(const int layer)
 {
-    return command_result(producer_->dispose(instance_id(layer)));
+    try {
+        auto result = producer_->dispose(instance_id(layer));
+        service_.cleanup_deleted_manifests();
+        return command_result(result);
+    } catch (...) {
+        try {
+            service_.cleanup_deleted_manifests();
+        } catch (...) {
+        }
+        throw;
+    }
 }
 
 std::string ograf_cg_proxy::instance_id(const int layer) const

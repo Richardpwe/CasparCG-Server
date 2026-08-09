@@ -29,6 +29,7 @@
 #include <iomanip>
 #include <limits>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -139,6 +140,21 @@ std::optional<std::string> query_value(const parsed_target& target, const std::s
 {
     const auto found = std::ranges::find_if(target.query, [&](const auto& entry) { return entry.first == name; });
     return found != target.query.end() ? std::optional(found->second) : std::nullopt;
+}
+
+bool query_boolean(const parsed_target& target, const std::string& name, const bool fallback)
+{
+    const auto value = query_value(target, name);
+    if (!value) {
+        return fallback;
+    }
+    if (*value == "true") {
+        return true;
+    }
+    if (*value == "false") {
+        return false;
+    }
+    throw api_error(400, name + " query parameter must be true or false");
 }
 
 boost::json::value parse_json(const std::string& input, const std::string& description)
@@ -434,6 +450,24 @@ api_response router::route(const api_request& request) const noexcept
             const auto graphic_id = path.substr(graphics_prefix.size());
             if (graphic_id.empty() || graphic_id.find('/') != std::string::npos) {
                 throw api_error(404, "Unknown OGraf graphic");
+            }
+            if (request.method == "DELETE") {
+                const auto force     = query_boolean(target, "force", false);
+                const auto tombstone = registry_.tombstone_manifest(graphic_id);
+                if (!tombstone) {
+                    throw api_error(404, "Unknown OGraf graphic " + graphic_id);
+                }
+
+                if (force) {
+                    service_.clear({graphic_filter{std::nullopt, graphic_id, std::nullopt}});
+                }
+
+                std::set<std::string> live_graphic_ids;
+                for (const auto& instance : service_.all_instances()) {
+                    live_graphic_ids.insert(instance.instance.graphic->id);
+                }
+                registry_.remove_unused_tombstones(live_graphic_ids);
+                return json_response(boost::json::object{});
             }
             if (request.method != "GET") {
                 throw api_error(405, "Method is not supported for this graphics resource");
